@@ -378,8 +378,10 @@ button:disabled { cursor:default; opacity:.42; }
 .slots.is-celebrating { animation:word-settle .72s var(--ease-out) both; }
 .slot {
   position:relative;
-  width:clamp(50px,5.6vw,70px);
-  height:70px;
+  width:clamp(64px,5.6vw,76px);
+  min-width:64px;
+  height:72px;
+  padding:0;
   border:4px dashed rgba(122,100,80,.42);
   border-radius:16px;
   background:rgba(255,239,216,.86);
@@ -387,7 +389,37 @@ button:disabled { cursor:default; opacity:.42; }
   place-items:center;
   font-size:clamp(30px,3.7vw,45px);
   font-weight:900;
+  color:var(--ink);
   box-shadow:inset 0 3px 8px rgba(90,60,20,.10);
+  touch-action:none;
+}
+/* A letter the child put there can be picked straight back up. */
+.slot.is-filled:not(.is-locked) { cursor:grab; }
+.slot.is-filled:not(.is-locked):active { cursor:grabbing; }
+/* Mid-drag, the slot it came from reverts to looking exactly like an empty
+   space — not a dimmed copy of the letter that is now under the finger. */
+.slot.is-filled.is-dragging {
+  animation:none;
+  border-style:dashed;
+  border-color:rgba(122,100,80,.42);
+  background:rgba(255,239,216,.86);
+  box-shadow:inset 0 3px 8px rgba(90,60,20,.10);
+  cursor:grab;
+}
+.slot.is-dragging .slot-letter { visibility:hidden; }
+
+/* While a letter is chosen by tapping, the empty spaces invite it in. */
+.slots.is-choosing .slot:not(.is-filled) {
+  border-color:var(--gold);
+  background:rgba(242,178,51,.16);
+  animation:slot-invite 1.2s ease-in-out infinite;
+}
+.slot.is-drop-target {
+  border-style:solid;
+  border-color:var(--gold);
+  background:rgba(242,178,51,.24);
+  transform:scale(1.08);
+  box-shadow:0 0 0 6px rgba(242,178,51,.22);
 }
 .slot-skin { position:absolute; inset:-4px; z-index:0; }
 .slot-skin img { width:100%; height:100%; object-fit:fill; }
@@ -398,6 +430,18 @@ button:disabled { cursor:default; opacity:.42; }
   background:var(--card);
   box-shadow:var(--shadow), inset 0 -4px 0 var(--cream2);
   animation:tile-land .42s var(--ease-spring);
+}
+/* Given letters are printed on the board, not tiles the child placed. Flatter
+   and warmer, so it is obvious which letters can be picked up. Declared after
+   .is-filled so it actually wins. */
+.slot.is-locked {
+  border-style:solid;
+  border-color:rgba(217,151,28,.45);
+  background:var(--cream2);
+  box-shadow:inset 0 3px 8px rgba(90,60,20,.10);
+  color:var(--ink2);
+  animation:none;
+  cursor:default;
 }
 .slot.is-filled.is-celebrating {
   animation:slot-celebrate .72s var(--ease-spring) both;
@@ -467,6 +511,64 @@ button:disabled { cursor:default; opacity:.42; }
   text-shadow:0 0 18px rgba(242,178,51,.72);
 }
 
+/* Every space filled, but not the word yet. It sits exactly where the
+   compliment sits, in plum — the colour this game already uses for help, not
+   for marking. Nothing is undone and nothing sounds. */
+.nudge-message {
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:max-content;
+  max-width:92%;
+  margin:0;
+  padding:12px 28px;
+  color:var(--plum);
+  background:rgba(255,247,234,.97);
+  border:4px solid var(--plum);
+  border-radius:22px;
+  box-shadow:var(--shadow);
+  font-size:clamp(21px,2.4vw,32px);
+  font-weight:850;
+  text-align:center;
+  opacity:0;
+  transform:translate(-50%,-50%) scale(.98);
+  pointer-events:none;
+  transition:opacity .26s var(--ease-out), transform .34s var(--ease-out);
+}
+.nudge-message.is-visible { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+/* The letter that travels under the finger. Two layers on purpose: the outer
+   div is a pure position anchor whose transform is set every frame by JS and
+   nothing else, so nothing can fight it. The pop-in flourish lives on the
+   inner span instead — a CSS animation on transform overrides any inline
+   transform on the SAME element for its whole duration, so if the lift
+   animation lived here it would blank out the tracked position each time a
+   tile was picked up, which read as the tile flying in from the corner. */
+.drag-ghost {
+  position:fixed;
+  top:0;
+  left:0;
+  z-index:200;
+  display:grid;
+  place-items:center;
+  pointer-events:none;
+  transform:translate3d(-999px,-999px,0);
+}
+.drag-ghost-pop {
+  display:grid;
+  place-items:center;
+  width:100%;
+  height:100%;
+  background:var(--card);
+  border:3px solid var(--gold);
+  border-radius:18px;
+  box-shadow:var(--shadow-hover);
+  font-size:38px;
+  font-weight:850;
+  color:var(--ink);
+  animation:ghost-lift .18s var(--ease-out);
+}
+
 .letter-tile {
   position:relative;
   width:72px;
@@ -492,7 +594,17 @@ button:disabled { cursor:default; opacity:.42; }
 .tile-skin { position:absolute; inset:-3px; z-index:0; border-radius:22px; overflow:hidden; }
 .tile-skin img { width:100%; height:100%; object-fit:fill; }
 .tile-letter { position:relative; z-index:1; }
-.letter-tile.is-used { visibility:hidden; }
+.letter-tile { touch-action:none; }
+/* Placed or mid-drag, the tray shows a gap, not a dimmed duplicate — the
+   letter exists once, under the finger or in its slot, never both. */
+.letter-tile.is-used,
+.letter-tile.is-dragging { visibility:hidden; }
+/* Chosen by tapping, waiting for a space to be tapped. */
+.letter-tile.is-selected {
+  transform:translateY(-10px) scale(1.06);
+  border-color:var(--gold);
+  box-shadow:0 0 0 6px rgba(242,178,51,.28), var(--shadow-lg), inset 0 -6px 0 var(--cream2);
+}
 .letter-tile.is-flying { animation:tile-fly .34s ease forwards; }
 .letter-tile.is-wobbling { animation:wobble .3s ease; }
 .letter-tile.is-hinting { animation:hint-breathe .75s ease-in-out infinite; box-shadow:0 0 0 7px rgba(242,178,51,.3), var(--shadow-lg); }
@@ -652,6 +764,108 @@ button:disabled { cursor:default; opacity:.42; }
   cursor:pointer;
 }
 
+/* ---- the end of the episode -------------------------------------------- */
+/* Its own screen. No jar shelf, no lanterns, no card borrowed from the round
+   close: the gallery of every word learned is the whole reward. */
+.gallery-screen { display:grid; place-items:center; padding:clamp(14px,2.4vh,28px) clamp(20px,3vw,44px); }
+.gallery-screen .scene-scrim {
+  background:linear-gradient(180deg, rgba(255,247,234,.72) 0%, rgba(255,247,234,.52) 40%, rgba(255,247,234,.74) 100%);
+}
+
+.gallery-card {
+  position:relative;
+  z-index:2;
+  width:min(1120px,96%);
+  height:min(94%,760px);
+  max-height:100%;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  justify-items:center;
+  gap:clamp(10px,1.8vh,22px);
+  padding:clamp(16px,2.4vh,30px) clamp(20px,2.6vw,40px);
+  background:linear-gradient(150deg, rgba(255,255,255,.97), rgba(255,247,234,.97));
+  border:7px solid var(--gold);
+  border-radius:44px;
+  box-shadow:var(--shadow-lg), inset 0 0 0 9px rgba(47,163,160,.10);
+  animation:payoff-in .55s var(--ease-out) backwards;
+}
+
+.gallery-heading {
+  margin:0;
+  max-width:900px;
+  text-align:center;
+  font-size:clamp(23px,3vw,42px);
+  font-weight:900;
+  line-height:1.14;
+  cursor:pointer;
+}
+
+.gallery-grid {
+  width:100%;
+  min-height:0;
+  display:grid;
+  grid-template-columns:repeat(8,minmax(0,1fr));
+  grid-auto-rows:1fr;
+  gap:clamp(6px,1vw,14px);
+  align-content:center;
+}
+
+.gallery-item {
+  min-width:0;
+  min-height:0;
+  display:grid;
+  grid-template-rows:minmax(0,1fr) auto;
+  align-items:center;
+  justify-items:center;
+  gap:4px;
+  padding:clamp(5px,.9vh,10px) 4px clamp(6px,1vh,10px);
+  background:var(--card);
+  border:3px solid rgba(217,151,28,.42);
+  border-radius:18px;
+  box-shadow:var(--shadow), inset 0 -5px 0 var(--cream2);
+  animation:gallery-pop .5s var(--ease-spring) backwards;
+  animation-delay:calc(var(--gallery-index) * 45ms);
+}
+@media (hover:hover) {
+  .gallery-item:hover {
+    transform:translateY(-9px) scale(1.06);
+    border-color:var(--gold);
+    box-shadow:var(--shadow-hover), inset 0 -5px 0 var(--cream2);
+  }
+}
+.gallery-item:active { transform:translateY(2px) scale(1.02,.95); transition-duration:.09s; }
+
+/* A white ground of its own so the artwork's white plate multiplies away. */
+.gallery-frame {
+  width:100%;
+  height:100%;
+  min-height:0;
+  display:grid;
+  place-items:center;
+  background:var(--card);
+  isolation:isolate;
+  border-radius:12px;
+  overflow:hidden;
+}
+.gallery-picture { display:grid; place-items:center; width:100%; height:100%; font-size:clamp(26px,3.4vw,46px); }
+.gallery-picture img { width:100%; height:100%; object-fit:contain; mix-blend-mode:multiply; }
+.gallery-word {
+  font-size:clamp(12px,1.35vw,20px);
+  font-weight:900;
+  letter-spacing:.03em;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.play-again-button {
+  padding:12px 44px;
+  background:var(--gold);
+  box-shadow:var(--shadow);
+  font-size:clamp(20px,2.2vw,27px);
+}
+.play-again-button:hover { transform:translateY(-7px) scale(1.04); box-shadow:var(--shadow-hover); }
+.play-again-button:active { transform:translateY(3px) scale(1.02,.94); }
+
 #rotate-view { display:none; position:fixed; inset:0; z-index:50; place-items:center; background:var(--cream); }
 .rotate-icon { width:190px; height:190px; position:relative; animation:turn-device 1.8s ease-in-out infinite; }
 .rotate-icon::before { content:""; position:absolute; left:54px; top:18px; width:82px; height:145px; border:10px solid var(--teal-d); border-radius:22px; background:var(--card); box-shadow:var(--shadow-lg); }
@@ -672,6 +886,9 @@ button:disabled { cursor:default; opacity:.42; }
 @keyframes ready-pulse { 50% { transform:translateY(-5px) scale(1.045); box-shadow:0 0 0 12px rgba(47,163,160,.14), var(--shadow-lg); } }
 @keyframes coach-pulse { 50% { border-color:var(--gold-d); transform:scale(1.018); } }
 @keyframes coach-bob { 50% { transform:translateY(11px); } }
+@keyframes slot-invite { 50% { background:rgba(242,178,51,.28); border-color:var(--gold-d); } }
+@keyframes ghost-lift { from { transform:scale(.9); opacity:.6; } }
+@keyframes gallery-pop { from { opacity:0; transform:translateY(16px) scale(.9); } }
 
 @media (orientation:portrait) {
   #app { visibility:hidden; }
@@ -692,10 +909,14 @@ button:disabled { cursor:default; opacity:.42; }
   .person-card { max-height:305px; }
   .speech-bubble { min-height:70px; font-size:17px; }
   .slots { min-height:64px; }
-  .slot { height:60px; }
+  .slot { height:64px; width:clamp(64px,5.2vw,70px); }
   .tiles { min-height:124px; padding:10px 14px; gap:12px; }
   .letter-tile { width:64px; height:64px; font-size:33px; }
   .tutorial-caption { padding:12px 22px; font-size:19px; }
+  .nudge-message { padding:9px 20px; font-size:20px; }
+  .gallery-card { border-radius:32px; gap:8px; }
+  .gallery-heading { font-size:clamp(19px,2.5vw,28px); }
+  .gallery-word { font-size:11px; }
 }
 
 @media (prefers-reduced-motion:reduce) {
@@ -724,7 +945,14 @@ button:disabled { cursor:default; opacity:.42; }
   .tutorial-skip:hover,.tutorial-skip:active,
   .open-button:hover,.open-button:active,
   .audio-toggle:hover,.audio-toggle:active,
+  .gallery-item:hover,.gallery-item:active,
+  .play-again-button:hover,.play-again-button:active,
   .fullscreen-toggle:hover,.fullscreen-toggle:active { transform:none; }
+
+  /* Dragging still works; it simply does not bounce or swell. */
+  .letter-tile.is-selected { transform:none; box-shadow:0 0 0 6px rgba(242,178,51,.28), var(--shadow-lg); }
+  .slot.is-drop-target { transform:none; }
+  .gallery-item:hover { box-shadow:var(--shadow-hover); border-color:var(--gold); }
 
   /* Keep the flat states legible without motion. */
   .person-card:not(:disabled):hover { box-shadow:var(--shadow-hover); }

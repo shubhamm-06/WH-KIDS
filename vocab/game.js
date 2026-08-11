@@ -19,6 +19,28 @@ const rotateView = document.querySelector("#rotate-view");
 const wordById = new Map(WORDS.map(word => [word.id, word]));
 const quietWords = new Set(["trust", "agreed", "promise"]);
 const SUCCESS_LINES = ["You did it!", "Lovely!", "That's the word!", "Wonderful!"];
+// Shown when every slot is full but the letters are in the wrong order. The
+// tier is chosen by how many letters are already home, then a line is picked
+// at random within it, so the same words never repeat back to back. Text
+// only: nothing here is spoken, and nothing here says "wrong".
+const NUDGE_LINES = {
+  warm: [
+    "So close! Just a little swap.",
+    "Almost there. One more move.",
+    "Nearly! Try swapping two letters."
+  ],
+  middle: [
+    "Nearly! Try moving them around.",
+    "Good try. Move the letters around.",
+    "Keep going. Try another order."
+  ],
+  far: [
+    "Keep going. You can move the letters around.",
+    "Have another go. Move them about.",
+    "Try the letters in a different order."
+  ]
+};
+const NUDGE_DELAY = 450;
 const imageState = new Map();
 const audioState = new Map();
 const sfxState = new Map();
@@ -59,6 +81,8 @@ let muted = loadMuteSetting();
 let build = null;
 let screenTransitionTimer = 0;
 let successLineIndex = 0;
+let nudgeTimer = 0;
+let lastNudgeLine = "";
 
 function sfxCandidates(name) {
   const compatibleNames = name === "tile-land" ? ["tile-land", "tile-place"] : [name];
@@ -607,6 +631,8 @@ function jarShelf(fullShelf = false) {
 function shell(screenClass, { fullShelf = false } = {}) {
   clearTimeout(helpTimer);
   clearTutorial();
+  finishDrag();
+  window.clearTimeout(nudgeTimer);
   const screen = node("section", `screen game-shell ${screenClass}`);
   marketScene(screen);
   screen.append(jarShelf(fullShelf));
@@ -839,7 +865,9 @@ function roundLanterns(allOn = false) {
 
 function renderQueue({ allowRevision = false } = {}) {
   if (episode.activeRound.length && episode.helped.length >= episode.activeRound.length) {
-    if (allWordsFinished()) renderAllDone();
+    // Words at full strength that have not had all their showings yet are
+    // resting, not finished, so this is not the end of the episode.
+    if (allWordsFinished()) renderAllDone({ waitingForRevision:revisionsCanReturn() });
     else renderClosed();
     return;
   }
@@ -912,12 +940,15 @@ function shuffled(items) {
 function prepareBuild(item) {
   const word = wordById.get(item.id);
   const letters = [...word.t];
-  const filled = letters.map(() => null);
+  // Every slot tracks which tile is sitting in it, so a tile can be pulled
+  // back out and moved somewhere else. Locked slots are the level-1 scaffold
+  // letters: they are given, so they hold no tile and cannot be picked up.
+  const slots = letters.map(() => ({ letter:null, tileId:null, locked:false }));
   if (item.level === 1) {
-    filled[0] = letters[0];
-    filled[letters.length - 1] = letters.at(-1);
+    slots[0] = { letter:letters[0], tileId:null, locked:true };
+    slots[letters.length - 1] = { letter:letters.at(-1), tileId:null, locked:true };
   }
-  const needed = letters.filter((letter, index) => !filled[index]);
+  const needed = letters.filter((letter, index) => !slots[index].locked);
   const spareCount = item.level === 1 ? 0 : item.level;
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const spares = [];
@@ -931,8 +962,11 @@ function prepareBuild(item) {
     item,
     word,
     letters,
-    filled,
-    tiles:shuffled([...needed, ...spares]).map((letter, index) => ({ id:`tile-${index}`, letter, used:false })),
+    slots,
+    tiles:shuffled([...needed, ...spares]).map((letter, index) => ({ id:`tile-${index}`, letter, placed:null })),
+    selectedTileId:null,
+    wasSolved:false,
+    wrongArrangementSfxPlayed:false,
     helpUsed:0,
     busy:false
   };
@@ -963,7 +997,9 @@ function renderServing(item, promptDelay = 0) {
   const tileStage = node("div", "tile-stage");
   const success = node("p", "success-message");
   success.setAttribute("aria-live", "polite");
-  tileStage.append(tileRow(), success);
+  const nudge = node("p", "nudge-message");
+  nudge.setAttribute("aria-live", "polite");
+  tileStage.append(tileRow(), success, nudge);
   bench.append(slotRow(), tileStage);
 
   const actions = node("div", "serve-actions");
@@ -1000,74 +1036,311 @@ function replayPrompt(prompt) {
   });
 }
 
+function tileById(id) {
+  return build.tiles.find(tile => tile.id === id) || null;
+}
+
+function slotsAreFull() {
+  return build.slots.every(slot => Boolean(slot.letter));
+}
+
+// Full is not the same as right. The word is only solved when every slot
+// holds the letter that belongs there.
+function isSolved() {
+  return build.slots.every((slot, index) => slot.letter === build.letters[index]);
+}
+
+function correctSlotCount() {
+  return build.slots.filter((slot, index) => slot.letter === build.letters[index]).length;
+}
+
+function firstUnsolvedSlot() {
+  return build.slots.findIndex((slot, index) => slot.letter !== build.letters[index]);
+}
+
+function removeTileFromSlot(index) {
+  const slot = build.slots[index];
+  if (!slot || slot.locked || !slot.tileId) return false;
+  const tile = tileById(slot.tileId);
+  if (tile) tile.placed = null;
+  slot.letter = null;
+  slot.tileId = null;
+  return true;
+}
+
+function placeTileInSlot(tileId, index) {
+  const slot = build.slots[index];
+  const tile = tileById(tileId);
+  if (!slot || !tile || slot.locked) return false;
+  if (tile.placed === index) return false;
+  // Vacate wherever this tile came from, and send any current occupant home.
+  if (tile.placed !== null) {
+    const previous = build.slots[tile.placed];
+    previous.letter = null;
+    previous.tileId = null;
+  }
+  if (slot.tileId) {
+    const displaced = tileById(slot.tileId);
+    if (displaced) displaced.placed = null;
+  }
+  slot.letter = tile.letter;
+  slot.tileId = tile.id;
+  tile.placed = index;
+  return true;
+}
+
 function slotRow() {
-  const complete = build.filled.every(Boolean);
-  const row = node("div", `slots ${complete ? "is-celebrating" : ""}`);
-  build.filled.forEach((letter, index) => {
-    const slot = node("span", `slot ${letter ? "is-filled" : ""} ${complete ? "is-celebrating" : ""}`);
-    slot.style.setProperty("--slot-index", index);
-    slot.append(img("slot-empty", fallbackFragment, { className:"slot-skin" }));
-    slot.append(node("span", "slot-letter", letter || ""));
-    row.append(slot);
+  const solved = isSolved();
+  const choosing = Boolean(build.selectedTileId);
+  const row = node("div", `slots ${solved ? "is-celebrating" : ""} ${choosing ? "is-choosing" : ""}`);
+  build.slots.forEach((slot, index) => {
+    const el = node("button", [
+      "slot",
+      slot.letter ? "is-filled" : "",
+      slot.locked ? "is-locked" : "",
+      solved ? "is-celebrating" : ""
+    ].filter(Boolean).join(" "));
+    el.type = "button";
+    el.dataset.slotIndex = String(index);
+    if (slot.tileId) el.dataset.tileId = slot.tileId;
+    el.style.setProperty("--slot-index", index);
+    el.setAttribute("aria-label", slot.letter ? `Letter ${slot.letter}` : "Empty space");
+    el.append(img("slot-empty", fallbackFragment, { className:"slot-skin" }));
+    el.append(node("span", "slot-letter", slot.letter || ""));
+    if (!slot.locked) attachDragSource(el, { kind:"slot", index });
+    row.append(el);
   });
   return row;
 }
 
 function tileRow() {
-  const row = node("div", `tiles ${isBuilt() ? "is-complete" : ""}`);
+  const row = node("div", `tiles ${slotsAreFull() ? "is-complete" : ""}`);
   for (const tile of build.tiles) {
-    const button = node("button", `letter-tile ${tile.used ? "is-used" : ""}`);
+    const button = node("button", [
+      "letter-tile",
+      tile.placed !== null ? "is-used" : "",
+      build.selectedTileId === tile.id ? "is-selected" : ""
+    ].filter(Boolean).join(" "));
     button.type = "button";
     button.dataset.tileId = tile.id;
+    button.setAttribute("aria-label", `Letter ${tile.letter}`);
     button.append(img("tile-blank", fallbackFragment, { className:"tile-skin" }));
     button.append(node("span", "tile-letter", tile.letter));
-    button.addEventListener("pointerenter", () => playTilePickup(tile));
-    button.addEventListener("pointerdown", event => {
-      if (event.pointerType !== "mouse") playTilePickup(tile);
-    });
-    button.addEventListener("click", () => chooseTile(tile, button));
+    if (tile.placed === null) attachDragSource(button, { kind:"tray", tileId:tile.id });
     row.append(button);
   }
   return row;
 }
 
-function nextBlank() {
-  return build.filled.findIndex(letter => !letter);
+// ---- moving letters about -------------------------------------------------
+// One pointer path covers finger, pen and mouse. A short press that barely
+// moves counts as a tap, so tap-to-place and drag are the same gesture until
+// the child's finger decides which one it is.
+const DRAG_THRESHOLD = 8;
+const SNAP_RADIUS = 104;
+const DROP_PADDING = 30;
+let drag = null;
+
+function sourceLetter(source) {
+  if (source.kind === "tray") return tileById(source.tileId)?.letter || "";
+  return build.slots[source.index]?.letter || "";
 }
 
-function tileFitsNextSlot(tile) {
-  const index = nextBlank();
-  return !build.busy && !tile.used && index >= 0 && tile.letter === build.letters[index];
+function sourceTileId(source) {
+  if (source.kind === "tray") return source.tileId;
+  return build.slots[source.index]?.tileId || null;
 }
 
-function playTilePickup(tile) {
-  // A tile that cannot go in next is completely silent.
-  if (tileFitsNextSlot(tile)) playSfx("tile-pickup");
+function attachDragSource(element, source) {
+  element.style.touchAction = "none";
+  element.addEventListener("pointerdown", event => beginPointer(event, source, element));
 }
 
-function chooseTile(tile, button) {
-  if (build.busy || tile.used) return;
-  const index = nextBlank();
-  if (index < 0) return;
-  if (!tileFitsNextSlot(tile)) {
-    button.classList.remove("is-wobbling");
-    void button.offsetWidth;
-    button.classList.add("is-wobbling");
+function beginPointer(event, source, element) {
+  if (build.busy || drag) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  // Captured now, before anything moves, so the ghost can be anchored to
+  // wherever within the tile the finger actually landed — not its centre.
+  const rect = element.getBoundingClientRect();
+  drag = {
+    pointerId:event.pointerId,
+    source,
+    element,
+    startX:event.clientX,
+    startY:event.clientY,
+    grabX:event.clientX - rect.left,
+    grabY:event.clientY - rect.top,
+    rectWidth:rect.width,
+    rectHeight:rect.height,
+    moved:false,
+    ghost:null
+  };
+  attachPointerFollow(element);
+}
+
+function attachPointerFollow(element) {
+  try { element.setPointerCapture(drag.pointerId); } catch { /* capture is a nicety */ }
+  element.addEventListener("pointermove", onPointerMove);
+  element.addEventListener("pointerup", onPointerUp);
+  element.addEventListener("pointercancel", onPointerCancel);
+}
+
+function detachPointerFollow() {
+  if (!drag) return;
+  const { element, pointerId } = drag;
+  element.removeEventListener("pointermove", onPointerMove);
+  element.removeEventListener("pointerup", onPointerUp);
+  element.removeEventListener("pointercancel", onPointerCancel);
+  try { element.releasePointerCapture(pointerId); } catch { /* already gone */ }
+}
+
+function onPointerMove(event) {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+  if (!drag.moved) {
+    const letter = sourceLetter(drag.source);
+    if (!letter) return;
+    drag.moved = true;
+    hideNudge();
+    setSelectedTile(null, { redraw:false });
+    playSfx("tile-pickup");
+    drag.ghost = makeGhost(letter, drag.rectWidth, drag.rectHeight);
+    drag.element.classList.add("is-dragging");
+  }
+  moveGhost(event.clientX, event.clientY);
+  highlightDropTarget(event.clientX, event.clientY);
+}
+
+function onPointerUp(event) {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const { source, moved } = drag;
+  const x = event.clientX;
+  const y = event.clientY;
+  finishDrag();
+  if (!moved) {
+    handleTap(source);
     return;
   }
-  build.busy = true;
-  // Put the letter into its real destination immediately. The tile can still
-  // animate up from the tray, but it never floats over an empty slot.
-  tile.used = true;
-  build.filled[index] = tile.letter;
-  const slots = document.querySelector(".slots");
-  if (slots) slots.replaceWith(slotRow());
-  button.classList.add("is-flying");
-  window.setTimeout(() => {
-    build.busy = false;
+  const target = slotAtPoint(x, y);
+  const tileId = sourceTileId(source);
+  if (target !== null && tileId && placeTileInSlot(tileId, target)) {
     playSfx("tile-land");
+  } else if (source.kind === "slot" && target === null) {
+    // Dropped away from every slot: the letter goes back to the tray.
+    removeTileFromSlot(source.index);
+  }
+  refreshWorkbench();
+}
+
+function onPointerCancel(event) {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  finishDrag();
+  refreshWorkbench();
+}
+
+function finishDrag() {
+  if (!drag) return;
+  detachPointerFollow();
+  drag.element.classList.remove("is-dragging");
+  if (drag.ghost) drag.ghost.remove();
+  clearDropHighlight();
+  drag = null;
+}
+
+// Two elements: the outer div is the position anchor moveGhost drives every
+// frame; the pop-in flourish lives on the inner span so its animation never
+// touches the outer's transform (see the CSS comment on .drag-ghost for why
+// that combination used to make the tile fly in from the corner).
+function makeGhost(letter, width, height) {
+  const ghost = node("div", "drag-ghost");
+  const pop = node("span", "drag-ghost-pop");
+  pop.append(node("span", "tile-letter", letter));
+  ghost.append(pop);
+  ghost.style.width = `${width}px`;
+  ghost.style.height = `${height}px`;
+  document.body.append(ghost);
+  return ghost;
+}
+
+// Keeps the ghost glued to the exact point the finger grabbed, so it never
+// recentres under the pointer — on the very first frame this places it
+// exactly where the real tile already was, zero jump.
+function moveGhost(x, y) {
+  if (!drag?.ghost) return;
+  drag.ghost.style.transform = `translate3d(${x - drag.grabX}px, ${y - drag.grabY}px, 0)`;
+}
+
+// Generous targeting: anywhere inside a padded slot counts, and failing that
+// the nearest slot centre within arm's reach.
+function slotAtPoint(x, y) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const el of document.querySelectorAll(".slot")) {
+    const index = Number(el.dataset.slotIndex);
+    if (build.slots[index]?.locked) continue;
+    const box = el.getBoundingClientRect();
+    const centreX = box.left + (box.width / 2);
+    const centreY = box.top + (box.height / 2);
+    const inside = x >= box.left - DROP_PADDING && x <= box.right + DROP_PADDING
+      && y >= box.top - DROP_PADDING && y <= box.bottom + DROP_PADDING;
+    const distance = Math.hypot(x - centreX, y - centreY);
+    if (!inside && distance > SNAP_RADIUS) continue;
+    const score = inside ? distance : distance + 1000;
+    if (score < bestDistance) {
+      bestDistance = score;
+      best = index;
+    }
+  }
+  return best;
+}
+
+function highlightDropTarget(x, y) {
+  const target = slotAtPoint(x, y);
+  for (const el of document.querySelectorAll(".slot")) {
+    el.classList.toggle("is-drop-target", Number(el.dataset.slotIndex) === target);
+  }
+}
+
+function clearDropHighlight() {
+  for (const el of document.querySelectorAll(".slot")) el.classList.remove("is-drop-target");
+}
+
+function setSelectedTile(tileId, { redraw = true } = {}) {
+  if (build.selectedTileId === tileId) return;
+  build.selectedTileId = tileId;
+  if (redraw) refreshWorkbench();
+}
+
+function handleTap(source) {
+  hideNudge();
+  if (source.kind === "tray") {
+    const tile = tileById(source.tileId);
+    if (!tile || tile.placed !== null) return;
+    if (build.selectedTileId === tile.id) {
+      setSelectedTile(null);
+      return;
+    }
+    playSfx("tile-pickup");
+    setSelectedTile(tile.id);
+    return;
+  }
+
+  const slot = build.slots[source.index];
+  if (!slot || slot.locked) return;
+  if (build.selectedTileId) {
+    const chosen = build.selectedTileId;
+    build.selectedTileId = null;
+    if (placeTileInSlot(chosen, source.index)) playSfx("tile-land");
     refreshWorkbench();
-  }, 320);
+    return;
+  }
+  if (slot.tileId) {
+    playSfx("tile-pickup");
+    removeTileFromSlot(source.index);
+    refreshWorkbench();
+  }
 }
 
 function refreshWorkbench() {
@@ -1075,18 +1348,26 @@ function refreshWorkbench() {
   const tiles = document.querySelector(".tile-stage .tiles");
   if (slots) slots.replaceWith(slotRow());
   if (tiles) tiles.replaceWith(tileRow());
+  updateOutcome();
+}
+
+// ---- right, wrong, or still going ----------------------------------------
+function updateOutcome() {
+  const solved = isSolved();
+  const full = slotsAreFull();
   const hand = document.querySelector(".handover-button");
-  if (hand) {
-    const wasDisabled = hand.disabled;
-    hand.disabled = !isBuilt();
-    if (wasDisabled && !hand.disabled) {
-      playSfx("word-complete");
-      const message = document.querySelector(".success-message");
-      if (message) {
-        message.textContent = SUCCESS_LINES[successLineIndex % SUCCESS_LINES.length];
-        successLineIndex += 1;
-        message.classList.add("is-visible");
-      }
+  const success = document.querySelector(".success-message");
+
+  if (hand) hand.disabled = !solved;
+
+  if (solved && !build.wasSolved) {
+    playSfx("word-complete");
+    if (success) {
+      success.textContent = SUCCESS_LINES[successLineIndex % SUCCESS_LINES.length];
+      successLineIndex += 1;
+      success.classList.add("is-visible");
+    }
+    if (hand) {
       hand.classList.remove("is-ready");
       void hand.offsetWidth;
       hand.classList.add("is-ready");
@@ -1094,14 +1375,64 @@ function refreshWorkbench() {
       if (area && !hasSeenTutorial()) startTutorial("hand", area);
     }
   }
+
+  if (!solved) {
+    if (success) success.classList.remove("is-visible");
+    if (hand) hand.classList.remove("is-ready");
+  }
+
+  if (full && !solved) scheduleNudge();
+  else {
+    // A new full-but-wrong moment may play its gentle nudge sound once.
+    // Removing a letter resets that moment; simply rearranging full slots does not.
+    if (!full) build.wrongArrangementSfxPlayed = false;
+    hideNudge();
+  }
+
+  build.wasSolved = solved;
+}
+
+// Every slot filled but the word is wrong. Nothing is undone, nothing is
+// marked, and a single gentle "not quite" sound accompanies the warm line.
+// The tiles simply stay movable and the nudge appears where the compliment
+// would have been.
+function nudgeLine() {
+  const total = build.letters.length;
+  const right = correctSlotCount();
+  const share = total ? right / total : 0;
+  const tier = (right >= total - 1 || share >= .75) ? "warm" : (share >= .4 ? "middle" : "far");
+  const pool = NUDGE_LINES[tier].filter(line => line !== lastNudgeLine);
+  const choices = pool.length ? pool : NUDGE_LINES[tier];
+  lastNudgeLine = choices[Math.floor(Math.random() * choices.length)];
+  return lastNudgeLine;
+}
+
+function scheduleNudge() {
+  window.clearTimeout(nudgeTimer);
+  nudgeTimer = window.setTimeout(() => {
+    const message = document.querySelector(".nudge-message");
+    if (!message || !build || !slotsAreFull() || isSolved()) return;
+    message.textContent = nudgeLine();
+    message.classList.add("is-visible");
+    if (!build.wrongArrangementSfxPlayed) {
+      build.wrongArrangementSfxPlayed = true;
+      playSfx("word-incorrect");
+    }
+  }, NUDGE_DELAY);
+}
+
+function hideNudge() {
+  window.clearTimeout(nudgeTimer);
+  const message = document.querySelector(".nudge-message");
+  if (message) message.classList.remove("is-visible");
 }
 
 function isBuilt() {
-  return build.filled.every(Boolean);
+  return isSolved();
 }
 
 function useHelp(button, prompt) {
-  if (build.busy || button.dataset.waiting || isBuilt()) return;
+  if (build.busy || button.dataset.waiting || isSolved()) return;
   button.dataset.waiting = "true";
   build.helpUsed = Math.min(3, build.helpUsed + 1);
   const stage = build.helpUsed;
@@ -1111,10 +1442,14 @@ function useHelp(button, prompt) {
       replayPrompt(prompt);
       return;
     }
-    const index = nextBlank();
-    const tile = build.tiles.find(item => !item.used && item.letter === build.letters[index]);
-    const tileButton = tile && document.querySelector(`[data-tile-id="${tile.id}"]`);
     if (stage === 2) {
+      // Point at the letter that belongs in the first slot that is not right
+      // yet, wherever that letter currently sits.
+      const index = firstUnsolvedSlot();
+      const wanted = build.letters[index];
+      const tile = build.tiles.find(item => item.placed === null && item.letter === wanted)
+        || build.tiles.find(item => item.letter === wanted);
+      const tileButton = tile && document.querySelector(`[data-tile-id="${tile.id}"]`);
       if (tileButton) tileButton.classList.add("is-hinting");
       return;
     }
@@ -1126,20 +1461,27 @@ function useHelp(button, prompt) {
   });
 }
 
+// Sorts the whole word out, including any letters the child has put in the
+// wrong place, one slot at a time from the left.
 async function finishWithHelp() {
   build.busy = true;
-  while (nextBlank() >= 0) {
-    const index = nextBlank();
-    const tile = build.tiles.find(item => !item.used && item.letter === build.letters[index]);
-    if (!tile) break;
-    tile.used = true;
-    build.filled[index] = tile.letter;
+  hideNudge();
+  build.selectedTileId = null;
+  for (let index = 0; index < build.slots.length; index += 1) {
+    if (build.slots[index].letter === build.letters[index]) continue;
+    const wanted = build.letters[index];
+    const tile = build.tiles.find(item => item.placed === null && item.letter === wanted)
+      || build.tiles.find(item => item.letter === wanted);
+    if (!tile) continue;
+    removeTileFromSlot(index);
+    placeTileInSlot(tile.id, index);
     refreshWorkbench();
     await new Promise(resolve => window.setTimeout(resolve, 145));
   }
   build.busy = false;
+  refreshWorkbench();
   window.setTimeout(() => {
-    if (document.querySelector(".serve-screen") && isBuilt()) {
+    if (document.querySelector(".serve-screen") && isSolved()) {
       say(`${build.word.id}_help`, `This one is ${build.word.t}.`);
     }
   }, 850);
@@ -1185,21 +1527,77 @@ function openAfterAllDone() {
   renderQueue({ allowRevision:true });
 }
 
+function playAgain() {
+  // A genuinely fresh episode: round, every word's strength and showings, the
+  // jars, and the current round all go back to the start. The mute setting and
+  // the seen-it-before flags live outside the episode, so they survive.
+  episode = freshEpisode();
+  saveEpisode();
+  successLineIndex = 0;
+  ensureRound();
+  renderQueue();
+}
+
+// The end of the whole episode: every word has had all of its showings and
+// none can come back. Its own screen, deliberately unlike anything else in
+// the game — the gallery of everything learned is the reward.
+function renderGalleryFinale() {
+  finishDrag();
+  clearTutorial();
+  clearTimeout(helpTimer);
+  const screen = node("section", "screen gallery-screen");
+  marketScene(screen);
+
+  const card = node("section", "gallery-card");
+  const heading = node("h1", "gallery-heading", "You have learned every word. Your shelf is full.");
+  card.append(spoken(heading, "ui-all-done", heading.textContent));
+
+  const gallery = node("div", "gallery-grid");
+  gallery.setAttribute("aria-label", "Every word you learned");
+  WORDS.forEach((word, index) => {
+    const item = node("button", "gallery-item");
+    item.type = "button";
+    item.style.setProperty("--gallery-index", index);
+    item.setAttribute("aria-label", `${word.t}. ${word.def}`);
+    const frame = node("span", "gallery-frame");
+    frame.append(wordPicture(word, "gallery-picture"));
+    item.append(frame, node("span", "gallery-word", word.t));
+    item.addEventListener("click", () => {
+      playSfx("tap");
+      say(word.id, word.t, {
+        onEnded: lineToken => window.setTimeout(() => {
+          if (lineToken !== currentLineToken) return;
+          say(`${word.id}_def`, word.def);
+        }, 300)
+      });
+    });
+    gallery.append(item);
+  });
+  card.append(gallery);
+  card.append(actionButton("Play again", "play-again-button", playAgain));
+  screen.append(card);
+  mountScreen(screen);
+  playSfx("all-learned");
+  say("ui-all-done", heading.textContent);
+}
+
 function renderAllDone({ waitingForRevision = false } = {}) {
+  if (!waitingForRevision) {
+    renderGalleryFinale();
+    return;
+  }
+  // Only the resting case reaches here now: the shelf is full, but some words
+  // still owe a visit before the episode is truly over.
   const area = shell("all-done-screen", { fullShelf:true });
   const card = node("section", "all-done-card");
   const sparkle = node("div", "all-done-sparkle", "✦");
   sparkle.setAttribute("aria-hidden", "true");
-  const line = waitingForRevision
-    ? "Your shelf is full. The words will visit again soon."
-    : "You have learned every word. Your shelf is full.";
-  const lineKey = waitingForRevision ? "ui-revision-soon" : "ui-all-done";
+  const line = "Your shelf is full. The words will visit again soon.";
   card.append(sparkle);
-  card.append(spoken(node("p", "all-done-line", line), lineKey, line));
+  card.append(spoken(node("p", "all-done-line", line), "ui-revision-soon", line));
   card.append(actionButton("Open again", "again-button", openAfterAllDone));
   area.append(card);
-  if (!waitingForRevision) playSfx("all-learned");
-  say(lineKey, line);
+  say("ui-revision-soon", line);
 }
 
 function renderClosed() {
