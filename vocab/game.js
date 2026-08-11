@@ -1044,6 +1044,7 @@ function refreshWorkbench() {
     const wasDisabled = hand.disabled;
     hand.disabled = !isBuilt();
     if (wasDisabled && !hand.disabled) {
+      playSfx("word-complete");
       const message = document.querySelector(".success-message");
       if (message) {
         message.textContent = SUCCESS_LINES[successLineIndex % SUCCESS_LINES.length];
