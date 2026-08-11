@@ -350,6 +350,7 @@ button:disabled { cursor:default; opacity:.42; }
 .speaker-button:active { transform:translateY(2px) scale(1.04,.92); }
 
 .slots { min-height:74px; display:flex; justify-content:center; align-items:center; gap:12px; }
+.slots.is-celebrating { animation:word-settle .72s var(--ease-out) both; }
 .slot {
   position:relative;
   width:clamp(50px,5.6vw,70px);
@@ -373,6 +374,11 @@ button:disabled { cursor:default; opacity:.42; }
   box-shadow:var(--shadow), inset 0 -4px 0 var(--cream2);
   animation:tile-land .42s var(--ease-spring);
 }
+.slot.is-filled.is-celebrating {
+  animation:slot-celebrate .72s var(--ease-spring) both;
+  animation-delay:calc(var(--slot-index) * 75ms);
+  box-shadow:0 0 0 4px rgba(242,178,51,.18), 0 0 22px rgba(242,178,51,.68), inset 0 -4px 0 var(--cream2);
+}
 
 /* A tray the letters lie in, with a lip at the front. It hugs its contents
    rather than stretching the full width and looking like an empty shelf. */
@@ -393,6 +399,47 @@ button:disabled { cursor:default; opacity:.42; }
   border-radius:var(--r);
   border-bottom:8px solid var(--gold-d);
   box-shadow:var(--shadow), inset 0 4px 12px rgba(90,60,20,.10);
+}
+.tile-stage {
+  position:relative;
+  align-self:center;
+  min-height:150px;
+  display:grid;
+  place-items:center;
+}
+.tile-stage .tiles { align-self:stretch; }
+.tiles.is-complete {
+  opacity:0;
+  transform:scale(.94);
+  pointer-events:none;
+}
+.success-message {
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:max-content;
+  max-width:90%;
+  margin:0;
+  display:grid;
+  place-items:center;
+  padding:12px 28px;
+  color:var(--ink);
+  background:rgba(255,247,234,.97);
+  border:4px solid var(--gold);
+  border-radius:22px;
+  box-shadow:var(--shadow-lg);
+  font-size:clamp(28px,3.4vw,46px);
+  font-weight:900;
+  text-align:center;
+  opacity:0;
+  transform:translate(-50%,-50%) scale(.96);
+  pointer-events:none;
+  transition:opacity .22s var(--ease-out), transform .42s var(--ease-spring), text-shadow .42s ease;
+}
+.success-message.is-visible {
+  opacity:1;
+  transform:translate(-50%,-50%) scale(1);
+  text-shadow:0 0 18px rgba(242,178,51,.72);
 }
 
 .letter-tile {
@@ -590,6 +637,8 @@ button:disabled { cursor:default; opacity:.42; }
 @keyframes walk-in { from { opacity:0; transform:translateX(70px); } }
 @keyframes tile-fly { 45% { transform:translateY(-42px) scale(1.08) rotate(-4deg); } to { transform:translateY(-65px) scale(.86); opacity:.15; } }
 @keyframes tile-land { 0% { transform:scale(.72); } 55% { transform:scale(1.14,.88); } 100% { transform:scale(1); } }
+@keyframes slot-celebrate { 0% { transform:translateY(0) scale(1); } 42% { transform:translateY(-10px) scale(1.08,.94); } 72% { transform:translateY(2px) scale(.98,1.04); } 100% { transform:translateY(0) scale(1); } }
+@keyframes word-settle { 0% { transform:scale(.98); } 55% { transform:scale(1.015); } 100% { transform:scale(1); } }
 @keyframes wobble { 25% { transform:rotate(-6deg); } 50% { transform:rotate(6deg); } 75% { transform:rotate(-4deg); } }
 @keyframes hint-breathe { 50% { transform:translateY(-10px) scale(1.06); } }
 @keyframes jar-glow { 50% { filter:drop-shadow(0 0 9px rgba(242,178,51,.62)); } }

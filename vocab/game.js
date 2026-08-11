@@ -18,6 +18,7 @@ const app = document.querySelector("#app");
 const rotateView = document.querySelector("#rotate-view");
 const wordById = new Map(WORDS.map(word => [word.id, word]));
 const quietWords = new Set(["trust", "agreed", "promise"]);
+const SUCCESS_LINES = ["You did it!", "Lovely!", "That's the word!", "Wonderful!"];
 const imageState = new Map();
 const audioState = new Map();
 const sfxState = new Map();
@@ -57,6 +58,7 @@ let bgmFadeFrame = 0;
 let muted = loadMuteSetting();
 let build = null;
 let screenTransitionTimer = 0;
+let successLineIndex = 0;
 
 function sfxCandidates(name) {
   const compatibleNames = name === "tile-land" ? ["tile-land", "tile-place"] : [name];
@@ -922,7 +924,11 @@ function renderServing(item, promptDelay = 0) {
   speaker.addEventListener("click", () => replayPrompt(prompt));
   bubbleRow.append(bubble, speaker);
   bench.append(bubbleRow);
-  bench.append(slotRow(), tileRow());
+  const tileStage = node("div", "tile-stage");
+  const success = node("p", "success-message");
+  success.setAttribute("aria-live", "polite");
+  tileStage.append(tileRow(), success);
+  bench.append(slotRow(), tileStage);
 
   const actions = node("div", "serve-actions");
   const help = node("button", "help-button", "Help me");
@@ -959,9 +965,11 @@ function replayPrompt(prompt) {
 }
 
 function slotRow() {
-  const row = node("div", "slots");
-  build.filled.forEach(letter => {
-    const slot = node("span", `slot ${letter ? "is-filled" : ""}`);
+  const complete = build.filled.every(Boolean);
+  const row = node("div", `slots ${complete ? "is-celebrating" : ""}`);
+  build.filled.forEach((letter, index) => {
+    const slot = node("span", `slot ${letter ? "is-filled" : ""} ${complete ? "is-celebrating" : ""}`);
+    slot.style.setProperty("--slot-index", index);
     slot.append(img("slot-empty", fallbackFragment, { className:"slot-skin" }));
     slot.append(node("span", "slot-letter", letter || ""));
     row.append(slot);
@@ -970,7 +978,7 @@ function slotRow() {
 }
 
 function tileRow() {
-  const row = node("div", "tiles");
+  const row = node("div", `tiles ${isBuilt() ? "is-complete" : ""}`);
   for (const tile of build.tiles) {
     const button = node("button", `letter-tile ${tile.used ? "is-used" : ""}`);
     button.type = "button";
@@ -1012,10 +1020,14 @@ function chooseTile(tile, button) {
     return;
   }
   build.busy = true;
+  // Put the letter into its real destination immediately. The tile can still
+  // animate up from the tray, but it never floats over an empty slot.
+  tile.used = true;
+  build.filled[index] = tile.letter;
+  const slots = document.querySelector(".slots");
+  if (slots) slots.replaceWith(slotRow());
   button.classList.add("is-flying");
   window.setTimeout(() => {
-    tile.used = true;
-    build.filled[index] = tile.letter;
     build.busy = false;
     playSfx("tile-land");
     refreshWorkbench();
@@ -1024,7 +1036,7 @@ function chooseTile(tile, button) {
 
 function refreshWorkbench() {
   const slots = document.querySelector(".slots");
-  const tiles = document.querySelector(".tiles");
+  const tiles = document.querySelector(".tile-stage .tiles");
   if (slots) slots.replaceWith(slotRow());
   if (tiles) tiles.replaceWith(tileRow());
   const hand = document.querySelector(".handover-button");
@@ -1032,7 +1044,12 @@ function refreshWorkbench() {
     const wasDisabled = hand.disabled;
     hand.disabled = !isBuilt();
     if (wasDisabled && !hand.disabled) {
-      playSfx("word-complete");
+      const message = document.querySelector(".success-message");
+      if (message) {
+        message.textContent = SUCCESS_LINES[successLineIndex % SUCCESS_LINES.length];
+        successLineIndex += 1;
+        message.classList.add("is-visible");
+      }
       hand.classList.remove("is-ready");
       void hand.offsetWidth;
       hand.classList.add("is-ready");
@@ -1084,7 +1101,11 @@ async function finishWithHelp() {
     await new Promise(resolve => window.setTimeout(resolve, 145));
   }
   build.busy = false;
-  say(`${build.word.id}_help`, `This one is ${build.word.t}.`);
+  window.setTimeout(() => {
+    if (document.querySelector(".serve-screen") && isBuilt()) {
+      say(`${build.word.id}_help`, `This one is ${build.word.t}.`);
+    }
+  }, 850);
 }
 
 function handOver() {
