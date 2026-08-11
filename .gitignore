@@ -1,1 +1,5 @@
 #main.py
+.env
+*.py
+word-lab-2/
+

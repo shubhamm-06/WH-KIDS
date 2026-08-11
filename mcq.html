@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Spot the Copy — Wisdom Hatch Kids</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --cream:#FFF7EA;  --cream2:#FFEFD8;  --ink:#3A2A1A;   --ink2:#7A6450;
+  --gold:#F2B233;   --gold-d:#D9971C;  --teal:#2FA3A0;  --teal-d:#1F817F;
+  --coral:#F0705A;  --coral-d:#D2523C; --plum:#7A5FA8;  --leaf:#6BA84F;
+  --card:#FFFFFF;
+  --shadow:0 10px 30px rgba(90,60,20,.15), 0 2px 6px rgba(90,60,20,.08);
+  --shadow-lg:0 22px 60px rgba(90,60,20,.22);
+  --r:26px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+html,body{margin:0;padding:0;height:100%;background:var(--cream);
+  font-family:'Baloo 2','Nunito',system-ui,sans-serif; color:var(--ink); overflow:hidden;}
+
+#rotateGuard{position:fixed; inset:0; background:var(--cream); z-index:999;
+  display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px; text-align:center; padding:24px;}
+@media (orientation:portrait){ #rotateGuard{display:flex;} #app{display:none;} }
+#rotateGuard svg{width:120px;height:120px;}
+#rotateGuard p{font-size:20px; font-weight:700; color:var(--ink2); max-width:280px;}
+
+#app{position:relative; width:100vw; height:100vh; overflow:hidden;}
+.screen{position:absolute; inset:0; display:none; flex-direction:column; align-items:center;
+  justify-content:center; padding:24px; opacity:0; transition:opacity .35s ease;}
+.screen.on{display:flex; opacity:1;}
+
+.hud{position:absolute; top:18px; left:0; right:0; display:flex; align-items:center;
+  justify-content:center; gap:14px; z-index:5;}
+.dot{width:22px;height:22px;border-radius:50%; background:var(--cream2); border:3px solid var(--gold-d);
+  opacity:.55; transition:all .4s ease;}
+.dot.lit{opacity:1; background:var(--gold); box-shadow:0 0 0 4px rgba(242,178,51,.25);}
+.dot.current{transform:scale(1.15); box-shadow:0 0 0 6px rgba(47,163,160,.25); border-color:var(--teal-d);}
+
+.homeBtn{position:absolute; top:14px; right:14px; width:56px;height:56px; min-width:64px;min-height:64px;
+  border-radius:50%; background:var(--card); box-shadow:var(--shadow); border:none; display:flex;
+  align-items:center; justify-content:center; cursor:pointer; z-index:6;}
+.homeBtn svg{width:28px;height:28px;}
+
+.card{background:var(--card); border-radius:var(--r); box-shadow:var(--shadow-lg);
+  padding:28px 32px; max-width:640px; width:100%; text-align:center;}
+.gold-panel{display:inline-block; background:var(--cream); border:3px solid var(--gold);
+  border-radius:16px; padding:10px 22px; font-weight:800; font-size:22px; color:var(--gold-d);
+  box-shadow:0 4px 0 var(--gold-d); letter-spacing:.5px;}
+
+/* start */
+#screen-start .hatchWrap{cursor:pointer; padding:20px; border-radius:50%; transition:transform .25s ease;}
+#screen-start .hatchWrap:active{transform:scale(.94);}
+#screen-start h1{font-size:26px; margin:6px 0 2px; color:var(--ink);}
+#screen-start p.sub{color:var(--ink2); font-weight:600; margin:0 0 18px; font-size:16px;}
+.tapHint{font-size:15px; color:var(--teal-d); font-weight:700; animation:pulse 1.8s infinite ease-in-out;}
+@keyframes pulse{0%,100%{opacity:.55;}50%{opacity:1;}}
+
+/* round */
+.prompt{background:var(--cream2); border-radius:20px; padding:14px 22px; max-width:520px;
+  font-size:18px; font-weight:700; color:var(--ink); box-shadow:var(--shadow); margin-bottom:26px;
+  display:flex; align-items:center; gap:12px; position:relative;}
+.prompt .spk{width:40px;height:40px;min-width:44px;min-height:44px; border-radius:50%; background:var(--gold);
+  border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;}
+.prompt .spk svg{width:20px;height:20px;}
+
+.lineup{display:flex; gap:22px; flex-wrap:wrap; justify-content:center; max-width:920px;}
+.coinBtn{width:118px; height:118px; min-width:64px; min-height:64px; border-radius:50%;
+  border:5px solid transparent; background:transparent; cursor:pointer; padding:0;
+  display:flex; align-items:center; justify-content:center; transition:transform .18s ease;}
+.coinBtn:active{transform:scale(.94);}
+.coinBtn svg{width:100%; height:100%; filter:drop-shadow(0 6px 10px rgba(90,60,20,.2));}
+.coinBtn.correct{border-color:var(--gold); animation:foundIt .6s ease;}
+@keyframes foundIt{0%{transform:scale(1);}40%{transform:scale(1.14);}100%{transform:scale(1.06);}}
+.coinBtn.faded{opacity:.35; transform:scale(.9); pointer-events:none;}
+.coinBtn.disabled{pointer-events:none;}
+.coinBtn.hintPulse{animation:hintBreathe 1.6s ease-in-out infinite;}
+@keyframes hintBreathe{0%,100%{transform:scale(1);}50%{transform:scale(1.08);}}
+
+.revealLine{font-size:18px; font-weight:700; max-width:460px; text-align:center; margin:22px 0 4px;
+  min-height:52px; color:var(--ink);}
+.continueBtn{margin-top:8px; min-height:64px; min-width:64px; padding:0 30px; border-radius:32px;
+  border:none; background:var(--gold); color:var(--ink); font-family:inherit; font-weight:800;
+  font-size:17px; box-shadow:0 6px 0 var(--gold-d); cursor:pointer; display:none; align-items:center; gap:8px;}
+.continueBtn.show{display:inline-flex; animation:popIn .3s ease;}
+@keyframes popIn{from{opacity:0; transform:translateY(8px) scale(.95);} to{opacity:1; transform:none;}}
+.continueBtn:active{transform:translateY(3px); box-shadow:0 3px 0 var(--gold-d);}
+
+/* end */
+#screen-end h2{font-size:24px; margin:6px 0 2px;}
+#screen-end p{color:var(--ink2); font-weight:600; font-size:16px; max-width:440px; margin:6px auto;}
+.replayBtn{margin-top:14px; min-height:64px; padding:0 34px; border-radius:32px; border:none;
+  background:var(--teal); color:#fff; font-family:inherit; font-weight:800; font-size:17px;
+  box-shadow:0 6px 0 var(--teal-d); cursor:pointer;}
+.replayBtn:active{transform:translateY(3px); box-shadow:0 3px 0 var(--teal-d);}
+
+@media (prefers-reduced-motion: reduce){ *{animation:none !important; transition:none !important;} }
+</style>
+</head>
+<body>
+
+<div id="rotateGuard">
+  <svg viewBox="0 0 100 100"><rect x="30" y="10" width="40" height="70" rx="8" fill="#F2B233" stroke="#D9971C" stroke-width="3"/><path d="M50 88 L58 78 L42 78 Z" fill="#3A2A1A"/></svg>
+  <p>Turn the tablet sideways to play!</p>
+</div>
+
+<div id="app">
+  <button class="homeBtn" onclick="location.reload()" aria-label="Home">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#7A5FA8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v9a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-9"/></svg>
+  </button>
+
+  <div class="hud" id="hud"></div>
+
+  <!-- START -->
+  <div class="screen on" id="screen-start">
+    <div class="hatchWrap" id="hatchTap" role="button" aria-label="Tap to start">
+      <svg viewBox="0 0 120 120" width="140" height="140">
+        <ellipse cx="60" cy="70" rx="38" ry="34" fill="#F2B233"/>
+        <circle cx="60" cy="42" r="26" fill="#F6C34D"/>
+        <path d="M52 40 L46 30 L58 36 Z" fill="#F0705A"/>
+        <path d="M68 40 L74 30 L62 36 Z" fill="#F0705A"/>
+        <circle cx="50" cy="42" r="4.2" fill="#3A2A1A"/>
+        <circle cx="70" cy="42" r="4.2" fill="#3A2A1A"/>
+        <path d="M56 50 L64 50 L60 56 Z" fill="#D9971C"/>
+        <ellipse cx="42" cy="72" rx="8" ry="14" fill="#F6C34D" transform="rotate(-18 42 72)"/>
+        <ellipse cx="78" cy="72" rx="8" ry="14" fill="#F6C34D" transform="rotate(18 78 72)"/>
+      </svg>
+    </div>
+    <h1>Spot the Copy</h1>
+    <p class="sub">One of these coins is a fake. Can you find it?</p>
+    <p class="tapHint">👆 Tap Hatch to begin</p>
+  </div>
+
+  <!-- ROUND -->
+  <div class="screen" id="screen-round">
+    <div class="prompt" id="promptBox">
+      <button class="spk" id="promptSpk" aria-label="Hear again">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3A2A1A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg>
+      </button>
+      <span id="promptText">Find the fake coin</span>
+    </div>
+    <div class="lineup" id="lineup"></div>
+    <p class="revealLine" id="revealLine"></p>
+    <button class="continueBtn" id="continueBtn">Next</button>
+  </div>
+
+  <!-- END -->
+  <div class="screen" id="screen-end">
+    <div class="card">
+      <span class="gold-panel">FAKE</span>
+      <h2>Good money is very hard to copy</h2>
+      <p>A fake always has something a little bit wrong. Real money is made so carefully that copies never quite match — that's part of what makes it good money.</p>
+      <button class="replayBtn" id="replayBtn">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== AUDIO (§9.2 signature; dev fallback only) ===== */
+let audioUnlocked=false;
+function say(text,opts={}){
+  if(!audioUnlocked||!('speechSynthesis'in window))return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=opts.rate||0.95; u.pitch=opts.pitch||1.05;
+  window.speechSynthesis.speak(u);
+}
+function unlockAudio(){audioUnlocked=true;
+  if('speechSynthesis'in window){window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));}}
+
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  document.getElementById('screen-'+id).classList.add('on');
+}
+
+/* ===== COIN RENDERER =====
+   A coin is drawn from a spec. The "real" coins in a round are identical.
+   The fake carries exactly ONE flaw so the difference is findable, not guessable. */
+function coinSVG(spec){
+  const {face, rim, flaw} = spec;
+  // base geometry
+  let dots = '';
+  const dotCount = flaw==='fewerdots' ? 8 : 12;
+  for(let i=0;i<dotCount;i++){
+    const a = (i/dotCount)*Math.PI*2;
+    const x = 60 + Math.cos(a)*44, y = 60 + Math.sin(a)*44;
+    dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="${rim}"/>`;
+  }
+  // lion face (canon: "a king put a lion's head on it")
+  const lion = `
+    <circle cx="60" cy="58" r="20" fill="none" stroke="${face}" stroke-width="3"/>
+    <circle cx="53" cy="55" r="2.6" fill="${face}"/>
+    <circle cx="67" cy="55" r="2.6" fill="${face}"/>
+    <path d="M54 66 Q60 71 66 66" stroke="${face}" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <path d="M60 50 L60 44" stroke="${face}" stroke-width="2.6" stroke-linecap="round"/>`;
+  // flaw application
+  let outer = `<circle cx="60" cy="60" r="54" fill="${rim}"/>
+               <circle cx="60" cy="60" r="47" fill="${spec.body}"/>`;
+  let extra = '';
+  if(flaw==='bite'){
+    // a bite taken out of the edge — canon: "a boy bit a coin to check for one"
+    extra = `<circle cx="102" cy="42" r="16" fill="var(--cream)"/>`;
+  }
+  if(flaw==='crack'){
+    extra = `<path d="M60 14 L58 40 L64 60 L60 100" stroke="var(--cream)" stroke-width="3" fill="none"/>`;
+  }
+  if(flaw==='wonky'){
+    // lion drawn off-centre and lopsided
+    return `<svg viewBox="0 0 120 120">${outer}${dots}
+      <g transform="translate(6,4) rotate(-8 60 58)">
+        <circle cx="60" cy="58" r="18" fill="none" stroke="${face}" stroke-width="3"/>
+        <circle cx="52" cy="56" r="2.6" fill="${face}"/>
+        <circle cx="66" cy="52" r="2.6" fill="${face}"/>
+        <path d="M53 65 Q60 68 67 64" stroke="${face}" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      </g>${extra}</svg>`;
+  }
+  if(flaw==='pale'){
+    outer = `<circle cx="60" cy="60" r="54" fill="${rim}" opacity=".45"/>
+             <circle cx="60" cy="60" r="47" fill="${spec.body}" opacity=".45"/>`;
+  }
+  return `<svg viewBox="0 0 120 120">${outer}${dots}${lion}${extra}</svg>`;
+}
+
+/* ===== ROUNDS =====
+   Each round: N identical real coins + 1 fake with a single visible, nameable flaw.
+   The flaw's name is what the child hears on reveal — that's the C4e teaching. */
+const GOLD  = {body:'#F6C34D', rim:'#D9971C', face:'#8A5A12'};
+const SILVER= {body:'#D8DEE4', rim:'#9AA5B0', face:'#5A6570'};
+const COPPER= {body:'#E0A879', rim:'#B87A45', face:'#7A4A22'};
+
+const ROUNDS = [
+  { base:GOLD, count:4, flaw:'bite',
+    ask:"Find the fake coin.",
+    reason:"This one has a bite out of it. A real coin doesn't crumble — the fake was too soft!" },
+  { base:SILVER, count:4, flaw:'wonky',
+    ask:"One coin is a copy. Which one?",
+    reason:"Look — its lion is all wonky. Whoever copied it couldn't get the picture right." },
+  { base:COPPER, count:5, flaw:'fewerdots',
+    ask:"Spot the fake.",
+    reason:"This one is missing some little dots around the edge. The copy left them out." },
+  { base:GOLD, count:5, flaw:'pale',
+    ask:"Which coin is not the real one?",
+    reason:"This one looks faded and pale. Real gold coins shine — the fake couldn't." }
+];
+
+let idx=0, solved=false, wrongCount=0, hintTimer=null;
+
+function buildHud(){
+  const hud=document.getElementById('hud'); hud.innerHTML='';
+  ROUNDS.forEach((r,i)=>{const d=document.createElement('div');d.className='dot';d.id='dot'+i;hud.appendChild(d);});
+}
+function updateHud(){
+  ROUNDS.forEach((r,i)=>{
+    const d=document.getElementById('dot'+i);
+    d.classList.toggle('lit', i<idx);
+    d.classList.toggle('current', i===idx);
+  });
+}
+
+function loadRound(){
+  clearTimeout(hintTimer);
+  solved=false; wrongCount=0;
+  const r=ROUNDS[idx];
+  updateHud();
+  document.getElementById('promptText').textContent=r.ask;
+  document.getElementById('revealLine').textContent='';
+  document.getElementById('continueBtn').classList.remove('show');
+
+  // build lineup: (count-... ) reals + 1 fake, shuffled
+  const coins=[];
+  for(let i=0;i<r.count-1;i++) coins.push({...r.base, flaw:null, real:true});
+  coins.push({...r.base, flaw:r.flaw, real:false});
+  shuffle(coins);
+
+  const lineup=document.getElementById('lineup'); lineup.innerHTML='';
+  coins.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='coinBtn';
+    b.setAttribute('aria-label','a coin');
+    b.dataset.fake = c.real ? '0' : '1';
+    b.innerHTML=coinSVG(c);
+    b.onclick=()=>tapCoin(b,c);
+    lineup.appendChild(b);
+  });
+
+  say(r.ask);
+  startHintTimer();
+}
+
+function startHintTimer(){
+  clearTimeout(hintTimer);
+  // §8.5-style bounded ladder: idle → gentle nudge, never scold
+  hintTimer=setTimeout(()=>hintStep(1), 7000);
+}
+
+function hintStep(step){
+  if(solved) return;
+  const r=ROUNDS[idx];
+  if(step===1){
+    say(r.ask); // repeat the ask
+    hintTimer=setTimeout(()=>hintStep(2), 7000);
+  } else if(step===2){
+    // fade two REAL coins to narrow the field, leave the fake untouched
+    const realBtns=[...document.querySelectorAll('.coinBtn')]
+      .filter(b=>b.dataset.fake==='0' && !b.classList.contains('faded'));
+    shuffle(realBtns);
+    realBtns.slice(0,2).forEach(b=>b.classList.add('faded'));
+    say("Look closely — one of these has something wrong.");
+    hintTimer=setTimeout(()=>hintStep(3), 7000);
+  } else if(step===3){
+    // gently breathe the fake — guaranteed success, never counts
+    const fakeBtn=[...document.querySelectorAll('.coinBtn')].find(b=>b.dataset.fake==='1');
+    if(fakeBtn) fakeBtn.classList.add('hintPulse');
+    say("This is the tricky one. Give it a tap!");
+  }
+}
+
+function tapCoin(btn, coin){
+  if(solved) return;
+  if(coin.real){
+    // WRONG — but silent. springs back, no sound, no red, no counter (§14)
+    btn.style.transition='transform .18s ease';
+    btn.style.transform='scale(.9)';
+    setTimeout(()=>btn.style.transform='',180);
+    wrongCount++;
+    // advance the hint ladder a little sooner on a wrong tap
+    clearTimeout(hintTimer);
+    if(wrongCount>=2) hintStep(2);
+    else hintTimer=setTimeout(()=>hintStep(2), 4000);
+    return;
+  }
+  // CORRECT
+  solved=true;
+  clearTimeout(hintTimer);
+  const r=ROUNDS[idx];
+  document.querySelectorAll('.coinBtn').forEach(b=>{
+    b.classList.remove('hintPulse');
+    b.classList.add('disabled');
+    if(b!==btn) b.classList.add('faded');
+  });
+  btn.classList.remove('faded');
+  btn.classList.add('correct');
+
+  document.getElementById('revealLine').textContent=r.reason;
+  say(r.reason);
+
+  const cont=document.getElementById('continueBtn');
+  cont.classList.add('show');
+  cont.textContent=(idx<ROUNDS.length-1)?'Next  ➜':'See what we learned  ➜';
+}
+
+document.getElementById('continueBtn').addEventListener('click',()=>{
+  idx++;
+  if(idx>=ROUNDS.length){ showEnd(); }
+  else loadRound();
+});
+
+function showEnd(){
+  updateHud();
+  go('end');
+  say("Good money is very hard to copy.");
+}
+
+document.getElementById('replayBtn').addEventListener('click',()=>{
+  idx=0; go('start');
+});
+
+document.getElementById('promptSpk').addEventListener('click',()=>{
+  say(ROUNDS[idx].ask);
+});
+
+document.getElementById('hatchTap').addEventListener('click',()=>{
+  unlockAudio();
+  say("Spot the Copy! One coin is a fake. Find the one that's not quite right.");
+  buildHud();
+  go('round');
+  loadRound();
+});
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+
+buildHud();
+</script>
+</body>
+</html>

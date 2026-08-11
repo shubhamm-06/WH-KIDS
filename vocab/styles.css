@@ -1,0 +1,658 @@
+:root {
+  --cream:#FFF7EA;
+  --cream2:#FFEFD8;
+  --ink:#3A2A1A;
+  --ink2:#7A6450;
+  --gold:#F2B233;
+  --gold-d:#D9971C;
+  --teal:#2FA3A0;
+  --teal-d:#1F817F;
+  --plum:#7A5FA8;
+  --leaf:#6BA84F;
+  --card:#FFFFFF;
+  --shadow:0 10px 30px rgba(90,60,20,.15), 0 2px 6px rgba(90,60,20,.08);
+  --shadow-lg:0 22px 60px rgba(90,60,20,.22);
+  --shadow-hover:0 40px 84px rgba(90,60,20,.34), 0 10px 22px rgba(90,60,20,.18);
+  --r:26px;
+  --ease-out:cubic-bezier(.2,.8,.25,1);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --shelf-pad:9px;
+  --shelf-row:70px;
+  --shelf-gap:12px;
+  --shelf-board:7px;
+}
+
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+html,
+body {
+  width:100%;
+  height:100%;
+  margin:0;
+  overflow:hidden;
+  background:var(--cream);
+  color:var(--ink);
+  font-family:'Baloo 2','Nunito',system-ui,sans-serif;
+  touch-action:manipulation;
+  user-select:none;
+}
+
+button {
+  min-width:64px;
+  min-height:64px;
+  border:0;
+  border-radius:22px;
+  color:var(--ink);
+  font:inherit;
+  font-weight:850;
+  cursor:pointer;
+  transition:transform .26s var(--ease-out), box-shadow .26s var(--ease-out),
+             opacity .26s var(--ease-out), background .26s var(--ease-out),
+             filter .26s var(--ease-out);
+}
+
+button:focus-visible { outline:5px solid var(--gold); outline-offset:4px; }
+button:disabled { cursor:default; opacity:.42; }
+
+#app { width:100%; height:100%; }
+
+.audio-toggle {
+  position:fixed;
+  top:max(16px, env(safe-area-inset-top));
+  right:max(16px, env(safe-area-inset-right));
+  z-index:100;
+  width:64px;
+  height:64px;
+  padding:0;
+  display:grid;
+  place-items:center;
+  background:var(--card);
+  border:4px solid var(--teal-d);
+  box-shadow:var(--shadow);
+  font-size:26px;
+  line-height:1;
+}
+.audio-toggle:hover { transform:translateY(-3px); box-shadow:var(--shadow-lg); }
+.audio-toggle:active { transform:translateY(2px) scale(.95); }
+
+.screen {
+  position:relative;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  isolation:isolate;
+  transition:opacity .18s ease;
+}
+
+.screen.is-leaving { opacity:0; pointer-events:none; }
+.screen.is-entering { opacity:0; }
+.screen.is-entering.is-visible { opacity:1; }
+
+/* ---- the market behind everything -------------------------------------- */
+/* The photograph fills the whole play area, cropped by object-fit, never
+   letterboxed and never stretched. Nothing opaque is allowed to sit on top of
+   it edge to edge, or it reads as a band across the middle. */
+.market-base { position:absolute; inset:0; display:block; overflow:hidden; background:var(--cream); z-index:0; }
+.market-base img { display:block; width:100%; height:100%; object-fit:cover; object-position:center 42%; }
+.market-flat { position:absolute; inset:0; background:linear-gradient(180deg, var(--cream) 0%, var(--cream2) 100%); }
+.awning-layer { position:absolute; inset:0 0 auto; width:100%; max-height:20%; z-index:1; }
+.awning-layer > img { width:100%; height:100%; object-fit:cover; }
+.counter-layer { position:absolute; inset:auto 0 0; height:30%; width:100%; z-index:1; }
+.counter-layer > img { width:100%; height:100%; object-fit:cover; }
+
+/* A whisper of warmth top and bottom so white text panels have something to
+   sit against. Never a hard edge. */
+.scene-scrim {
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,247,234,.34) 0%, rgba(255,247,234,0) 22%,
+             rgba(255,247,234,0) 62%, rgba(255,247,234,.50) 100%);
+}
+
+.tap-screen { display:grid; place-items:center; }
+.tap-screen .scene-scrim {
+  background:radial-gradient(circle at 50% 50%, rgba(255,247,234,.86) 0%, rgba(255,247,234,.58) 44%, rgba(255,247,234,.30) 100%);
+}
+
+.open-button {
+  position:relative;
+  z-index:2;
+  width:min(580px,70vw);
+  min-height:148px;
+  padding:28px 50px;
+  background:var(--gold);
+  border:8px solid var(--card);
+  box-shadow:var(--shadow-lg), inset 0 -9px 0 rgba(90,60,20,.12);
+  font-size:clamp(30px,4.5vw,60px);
+  animation:soft-breathe 2.4s ease-in-out infinite;
+}
+.open-button:hover { box-shadow:var(--shadow-hover), inset 0 -9px 0 rgba(90,60,20,.12); }
+.open-button:active { transform:translateY(5px) scale(.985); box-shadow:var(--shadow), inset 0 -4px 0 rgba(90,60,20,.12); }
+
+.game-shell { display:grid; grid-template-rows:auto 1fr; }
+
+/* ---- the jar shelf ------------------------------------------------------ */
+/* Two wooden boards with the jars standing on them. The backing fades out at
+   the bottom so the market rises up behind it instead of being cut off. */
+.jar-shelf {
+  position:relative;
+  display:grid;
+  grid-template-columns:repeat(8,72px);
+  grid-template-rows:repeat(2,var(--shelf-row));
+  justify-content:center;
+  gap:var(--shelf-gap);
+  padding:var(--shelf-pad) 24px calc(var(--shelf-pad) + var(--shelf-board));
+  z-index:5;
+  background-image:
+    linear-gradient(180deg, rgba(255,247,234,.84) 0%, rgba(255,247,234,.66) 55%, rgba(255,247,234,0) 100%),
+    linear-gradient(var(--gold-d), var(--gold-d)),
+    linear-gradient(var(--gold-d), var(--gold-d));
+  background-size:100% 100%, 100% var(--shelf-board), 100% var(--shelf-board);
+  background-position:
+    0 0,
+    0 calc(var(--shelf-pad) + var(--shelf-row)),
+    0 calc(var(--shelf-pad) + (var(--shelf-row) * 2) + var(--shelf-gap));
+  background-repeat:no-repeat;
+}
+.shelf-art { position:absolute; inset:auto 0 0; height:18px; z-index:0; }
+.shelf-art > img { width:100%; height:100%; object-fit:fill; }
+
+.jar-button {
+  position:relative;
+  z-index:1;
+  display:grid;
+  grid-template-rows:1fr auto;
+  place-items:center;
+  gap:1px;
+  padding:2px 2px 4px;
+  background:transparent;
+  border-radius:14px;
+  font-size:12px;
+  letter-spacing:.02em;
+}
+
+.jar-button.is-empty { opacity:.28; cursor:default; }
+.jar-button.is-full { animation:jar-glow 2.8s ease-in-out infinite; }
+.jar-button.is-full:hover { transform:translateY(-6px) scale(1.06); }
+.jar-button.is-full:active { transform:translateY(1px) scale(1.02,.94); }
+.jar-picture { width:46px; height:48px; display:grid; place-items:center; font-size:26px; position:relative; }
+.jar-picture img { width:100%; height:100%; object-fit:contain; }
+.jar-art { position:absolute; inset:1px; display:grid; place-items:center; }
+.jar-word-picture { position:absolute; inset:11px 6px 3px; display:grid; place-items:center; z-index:2; font-size:19px; }
+.jar-word-picture img { width:100%; height:100%; object-fit:contain; mix-blend-mode:multiply; }
+.jar-css { width:38px; height:42px; border:3px solid var(--teal-d); border-radius:6px 6px 12px 12px; position:relative; background:rgba(255,255,255,.62); }
+.jar-css::before { content:""; position:absolute; left:-4px; right:-4px; top:-7px; height:8px; border:3px solid var(--teal-d); border-radius:4px; background:var(--gold); }
+.jar-button.is-full .jar-css::after { content:""; position:absolute; left:3px; right:3px; bottom:3px; height:22px; border-radius:4px 4px 8px 8px; background:var(--gold); opacity:.72; }
+.jar-label { white-space:nowrap; line-height:1; font-size:12px; }
+
+.play-area { position:relative; min-height:0; padding:14px 38px 22px; }
+.game-shell .play-area { z-index:2; }
+
+.lantern-row { height:60px; display:flex; justify-content:center; align-items:center; gap:26px; }
+.lantern { width:40px; height:48px; display:grid; place-items:center; }
+.lantern img { width:100%; height:100%; object-fit:contain; }
+.lantern-css { width:28px; height:34px; border:4px solid var(--ink2); border-radius:9px 9px 14px 14px; background:rgba(255,247,234,.55); position:relative; }
+.lantern-css::before { content:""; position:absolute; width:14px; height:8px; border:3px solid var(--ink2); border-bottom:0; border-radius:12px 12px 0 0; left:4px; top:-11px; }
+.lantern.is-on .lantern-css { background:var(--gold); border-color:var(--gold-d); box-shadow:0 0 24px var(--gold); }
+
+.queue-heading {
+  margin:0 auto 14px;
+  width:max-content;
+  max-width:90%;
+  min-height:64px;
+  display:flex;
+  align-items:center;
+  padding:10px 32px;
+  background:var(--card);
+  border-radius:22px;
+  box-shadow:var(--shadow-lg);
+  font-size:clamp(24px,2.7vw,36px);
+  cursor:pointer;
+}
+
+/* ---- the queue --------------------------------------------------------- */
+.people-row { display:flex; justify-content:center; align-items:end; gap:26px; height:calc(100% - 138px); }
+
+.person-card {
+  position:relative;
+  width:min(262px,27vw);
+  height:100%;
+  max-height:370px;
+  padding:12px 14px 16px;
+  display:grid;
+  grid-template-rows:1fr auto auto;
+  gap:5px;
+  background:var(--card);
+  border:0;
+  border-radius:24px;
+  box-shadow:var(--shadow-lg), inset 0 -7px 0 var(--cream2);
+  /* backwards, never both: a forwards fill would outrank every later rule,
+     which is exactly why the helped and hover states used to do nothing. */
+  animation:walk-in .55s var(--ease-out) backwards;
+  transition:transform .3s var(--ease-out), box-shadow .3s var(--ease-out),
+             opacity .34s var(--ease-out), filter .34s var(--ease-out);
+}
+.person-card:nth-child(2) { animation-delay:.1s; }
+.person-card:nth-child(3) { animation-delay:.2s; }
+
+@media (hover:hover) {
+  .person-card:not(:disabled):hover {
+    transform:translateY(-12px) scale(1.04) rotate(-1.1deg);
+    box-shadow:var(--shadow-hover), inset 0 -7px 0 var(--cream2);
+  }
+  .person-card:not(:disabled):nth-child(even):hover { transform:translateY(-12px) scale(1.04) rotate(1.1deg); }
+}
+.person-card:not(:disabled):active {
+  transform:translateY(-2px) scale(1.015,.975) rotate(0deg);
+  box-shadow:var(--shadow), inset 0 -3px 0 var(--cream2);
+  transition-duration:.1s;
+}
+
+/* Helped: clearly finished and out of play. No tick, no colour, no count. */
+.person-card.is-helped {
+  animation:none;
+  opacity:.25;
+  box-shadow:none;
+  pointer-events:none;
+  filter:saturate(.6);
+}
+.person-card.is-chosen {
+  --queue-shift:0px;
+  animation:none;
+  opacity:1;
+  transform:translateX(var(--queue-shift)) translateY(-14px) scale(1.07);
+  box-shadow:var(--shadow-hover), inset 0 -7px 0 var(--cream2);
+  z-index:3;
+}
+.person-card.is-deemphasised { animation:none; opacity:.22; transform:scale(.94); filter:saturate(.7); pointer-events:none; }
+
+.person-art { min-height:120px; display:grid; place-items:center; overflow:hidden; }
+/* The artwork ships on a white background with no alpha. Against the white
+   card, multiply makes that background disappear instead of showing a box. */
+.person-card .person-art img { width:100%; height:100%; object-fit:contain; mix-blend-mode:multiply; }
+.person-art img { width:100%; height:100%; object-fit:contain; }
+.person-name { font-size:clamp(20px,2.3vw,30px); line-height:1.05; }
+.person-has { color:var(--ink2); font-size:clamp(16px,1.6vw,22px); }
+
+.figure-fallback { width:122px; height:165px; position:relative; }
+.figure-head { position:absolute; left:36px; top:4px; width:52px; height:52px; border-radius:50%; background:#E7B77E; border:4px solid var(--ink); }
+.figure-head::before { content:""; position:absolute; width:7px; height:7px; border-radius:50%; background:var(--ink); left:10px; top:20px; box-shadow:22px 0 0 var(--ink); }
+.figure-head::after { content:"⌣"; position:absolute; left:15px; top:20px; font-size:26px; }
+.figure-body { position:absolute; left:19px; top:53px; width:87px; height:101px; border-radius:36px 36px 17px 17px; background:var(--teal); border:4px solid var(--ink); }
+.figure-body::before,.figure-body::after { content:""; position:absolute; width:24px; height:82px; background:inherit; border:4px solid var(--ink); border-radius:18px; top:15px; z-index:-1; }
+.figure-body::before { left:-19px; transform:rotate(12deg); }
+.figure-body::after { right:-19px; transform:rotate(-12deg); }
+.figure-fallback.plum .figure-body { background:var(--plum); }
+.figure-fallback.gold .figure-body { background:var(--gold); }
+.figure-fallback.leaf .figure-body { background:var(--leaf); }
+
+/* ---- serving one person ------------------------------------------------ */
+.serve-layout { display:grid; grid-template-columns:minmax(190px,27%) 1fr; gap:28px; height:100%; padding-top:4px; }
+.serve-person { display:grid; place-items:end center; min-height:0; }
+/* Framed like a portrait so the white plate the art sits on reads as a
+   deliberate panel. The frame matches the artwork's shape, so there is no
+   empty white margin around the character. */
+.serve-person .person-art {
+  width:100%;
+  height:auto;
+  aspect-ratio:896 / 1200;
+  max-height:100%;
+  align-self:end;
+  background:var(--card);
+  border-radius:26px 26px 10px 10px;
+  border-bottom:7px solid var(--gold-d);
+  box-shadow:var(--shadow-lg);
+  overflow:hidden;
+}
+.fallback-person-image { display:grid; place-items:center; width:100%; height:100%; }
+.serve-person .figure-fallback { transform:scale(1.22); transform-origin:bottom; }
+
+.workbench { min-width:0; display:grid; grid-template-rows:auto auto 1fr auto; gap:14px; align-content:center; }
+.bubble-row { display:grid; grid-template-columns:1fr 64px; gap:18px; align-items:center; }
+
+.speech-bubble {
+  position:relative;
+  min-height:86px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:5px;
+  padding:14px 26px;
+  background:var(--card);
+  border-radius:var(--r);
+  box-shadow:var(--shadow-lg);
+  font-size:clamp(17px,1.85vw,25px);
+  line-height:1.24;
+  cursor:pointer;
+}
+/* A tail, so it reads as somebody speaking rather than a floating panel. */
+.speech-bubble::after {
+  content:"";
+  position:absolute;
+  left:-17px;
+  top:44px;
+  width:0;
+  height:0;
+  border:11px solid transparent;
+  border-right-color:var(--card);
+  border-left:0;
+  filter:drop-shadow(-5px 2px 4px rgba(90,60,20,.10));
+}
+.bubble-skin { position:absolute; inset:0; z-index:0; }
+.bubble-skin img { width:100%; height:100%; object-fit:fill; }
+.prompt-line,.second-line { position:relative; z-index:1; }
+.speech-bubble .second-line { color:var(--teal-d); font-weight:800; }
+
+.speaker-button { background:var(--teal); color:var(--card); font-size:29px; box-shadow:var(--shadow); }
+.speaker-button:hover { transform:translateY(-6px) scale(1.06); box-shadow:var(--shadow-lg); }
+.speaker-button:active { transform:translateY(2px) scale(1.04,.92); }
+
+.slots { min-height:74px; display:flex; justify-content:center; align-items:center; gap:12px; }
+.slot {
+  position:relative;
+  width:clamp(50px,5.6vw,70px);
+  height:70px;
+  border:4px dashed rgba(122,100,80,.42);
+  border-radius:16px;
+  background:rgba(255,239,216,.86);
+  display:grid;
+  place-items:center;
+  font-size:clamp(30px,3.7vw,45px);
+  font-weight:900;
+  box-shadow:inset 0 3px 8px rgba(90,60,20,.10);
+}
+.slot-skin { position:absolute; inset:-4px; z-index:0; }
+.slot-skin img { width:100%; height:100%; object-fit:fill; }
+.slot-letter { position:relative; z-index:1; }
+.slot.is-filled {
+  border-style:solid;
+  border-color:var(--gold-d);
+  background:var(--card);
+  box-shadow:var(--shadow), inset 0 -4px 0 var(--cream2);
+  animation:tile-land .42s var(--ease-spring);
+}
+
+/* A tray the letters lie in, with a lip at the front. It hugs its contents
+   rather than stretching the full width and looking like an empty shelf. */
+.tiles {
+  align-self:center;
+  justify-self:center;
+  width:max-content;
+  min-width:min(100%,420px);
+  max-width:100%;
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  align-content:center;
+  gap:18px;
+  min-height:150px;
+  padding:16px 22px;
+  background:linear-gradient(180deg, rgba(255,247,234,.94), rgba(255,239,216,.94));
+  border-radius:var(--r);
+  border-bottom:8px solid var(--gold-d);
+  box-shadow:var(--shadow), inset 0 4px 12px rgba(90,60,20,.10);
+}
+
+.letter-tile {
+  position:relative;
+  width:72px;
+  height:72px;
+  background:var(--card);
+  box-shadow:var(--shadow), inset 0 -6px 0 var(--cream2);
+  font-size:38px;
+  border:3px solid rgba(217,151,28,.55);
+  border-radius:18px;
+  isolation:isolate;
+}
+@media (hover:hover) {
+  .letter-tile:not(.is-used):not(.is-flying):hover {
+    transform:translateY(-8px) scale(1.05);
+    box-shadow:0 22px 42px rgba(90,60,20,.26), inset 0 -6px 0 var(--cream2);
+  }
+}
+.letter-tile:not(.is-used):not(.is-flying):active {
+  transform:translateY(3px) scale(1.06,.88);
+  box-shadow:var(--shadow), inset 0 -2px 0 var(--cream2);
+  transition-duration:.09s;
+}
+.tile-skin { position:absolute; inset:-3px; z-index:0; border-radius:22px; overflow:hidden; }
+.tile-skin img { width:100%; height:100%; object-fit:fill; }
+.tile-letter { position:relative; z-index:1; }
+.letter-tile.is-used { visibility:hidden; }
+.letter-tile.is-flying { animation:tile-fly .34s ease forwards; }
+.letter-tile.is-wobbling { animation:wobble .3s ease; }
+.letter-tile.is-hinting { animation:hint-breathe .75s ease-in-out infinite; box-shadow:0 0 0 7px rgba(242,178,51,.3), var(--shadow-lg); }
+
+.serve-actions { display:flex; justify-content:center; align-items:center; gap:20px; min-height:72px; }
+.help-button { background:var(--plum); color:var(--card); padding:10px 26px; opacity:0; visibility:hidden; }
+.help-button.is-visible { opacity:1; visibility:visible; }
+.help-button:hover { transform:translateY(-6px); box-shadow:var(--shadow-lg); }
+.help-button:active { transform:translateY(2px) scale(.99,.95); }
+
+.handover-button { background:var(--teal); color:var(--card); padding:12px 36px; font-size:24px; box-shadow:var(--shadow); }
+.handover-button:disabled { background:var(--ink2); box-shadow:none; }
+.handover-button:not(:disabled):hover { transform:translateY(-7px) scale(1.04); box-shadow:var(--shadow-hover); }
+.handover-button:not(:disabled):active { transform:translateY(3px) scale(1.02,.94); transition-duration:.09s; }
+.handover-button.is-ready { animation:ready-pulse 2.6s ease-in-out infinite; }
+
+/* ---- first-run walkthrough --------------------------------------------- */
+.tutorial-layer { position:absolute; inset:0; z-index:40; pointer-events:none; }
+
+.tutorial-ring {
+  position:absolute;
+  border:6px dashed var(--gold);
+  border-radius:28px;
+  box-shadow:0 0 0 9999px rgba(58,42,26,.34);
+  animation:coach-pulse 1.9s ease-in-out infinite;
+}
+
+/* Hidden only while the walkthrough is talking, so its caption can take the
+   same spot without the two stacking on top of each other. */
+.is-coaching .queue-heading { visibility:hidden; }
+
+.tutorial-caption {
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  margin:0;
+  max-width:min(660px,78vw);
+  padding:14px 28px;
+  text-align:center;
+  background:var(--card);
+  border-radius:24px;
+  box-shadow:var(--shadow-lg);
+  font-size:clamp(19px,2.1vw,28px);
+  font-weight:800;
+  line-height:1.22;
+}
+
+.tutorial-pointer {
+  position:absolute;
+  width:44px;
+  height:44px;
+  animation:coach-bob 1.15s ease-in-out infinite;
+}
+.tutorial-pointer::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  border:22px solid transparent;
+  border-bottom-color:var(--gold);
+  border-top:0;
+  filter:drop-shadow(0 4px 6px rgba(90,60,20,.3));
+}
+.tutorial-pointer.arrow-down::after { border:22px solid transparent; border-top-color:var(--gold); border-bottom:0; }
+
+.tutorial-skip {
+  position:absolute;
+  right:max(22px, env(safe-area-inset-right));
+  bottom:max(22px, env(safe-area-inset-bottom));
+  pointer-events:auto;
+  min-width:132px;
+  min-height:64px;
+  padding:10px 30px;
+  background:var(--card);
+  border:4px solid var(--teal-d);
+  color:var(--teal-d);
+  box-shadow:var(--shadow-lg);
+  font-size:23px;
+}
+.tutorial-skip:hover { transform:translateY(-5px) scale(1.03); box-shadow:var(--shadow-hover); }
+.tutorial-skip:active { transform:translateY(2px) scale(1.01,.96); }
+
+/* ---- introduction, payoff, closing ------------------------------------- */
+.intro-screen { display:grid; place-items:center; }
+.intro-card { position:relative; z-index:3; width:min(760px,82vw); padding:38px 52px; display:flex; flex-direction:column; align-items:center; gap:22px; text-align:center; background:rgba(255,255,255,.96); border:7px solid var(--gold); border-radius:38px; box-shadow:var(--shadow-lg); }
+.intro-title { margin:0; font-size:clamp(34px,5vw,62px); }
+.intro-line { max-width:630px; margin:0; font-size:clamp(20px,2.4vw,31px); line-height:1.28; }
+.intro-continue { padding:12px 36px; background:var(--gold); box-shadow:var(--shadow); font-size:26px; }
+.intro-continue:hover { transform:translateY(-7px) scale(1.04); box-shadow:var(--shadow-hover); }
+.intro-continue:active { transform:translateY(3px) scale(1.02,.94); }
+
+/* These two screens hold a single card, centred in the play area. */
+.payoff-screen .play-area,
+.closed-screen .play-area,
+.all-done-screen .play-area { display:grid; place-items:center; }
+
+.payoff-card { width:min(790px,86vw); max-height:100%; display:grid; grid-template-columns:36% 1fr; align-items:center; gap:30px; padding:26px 36px; background:var(--card); border:7px solid var(--gold); border-radius:36px; box-shadow:var(--shadow-lg); animation:payoff-in .5s var(--ease-out) backwards; }
+/* An explicit white ground in its own blending group, so the artwork's
+   white plate multiplies away instead of showing as a grey rectangle. */
+.payoff-visual { position:relative; display:grid; place-items:center; font-size:clamp(76px,11vw,140px); height:100%; background:var(--card); isolation:isolate; border-radius:20px; }
+.payoff-visual img { width:100%; max-height:230px; object-fit:contain; }
+/* The ghosted person behind the word read as a smudge on the card. */
+.payoff-visual .person-art { display:none; }
+.payoff-word-picture { position:relative; display:grid; place-items:center; width:100%; height:75%; }
+.payoff-word-picture img { mix-blend-mode:multiply; }
+.emoji-picture { display:grid; place-items:center; width:100%; height:100%; }
+.payoff-copy { display:flex; flex-direction:column; align-items:flex-start; gap:14px; }
+.payoff-line { margin:0; font-size:clamp(28px,3.6vw,50px); line-height:1.05; cursor:pointer; }
+.payoff-line.quiet { font-size:clamp(25px,3.1vw,42px); color:var(--teal-d); }
+.meaning { margin:0; color:var(--ink2); font-size:clamp(19px,2.05vw,28px); line-height:1.25; cursor:pointer; }
+.next-button,.again-button { padding:12px 38px; background:var(--gold); box-shadow:var(--shadow); font-size:25px; }
+.next-button:hover,.again-button:hover { transform:translateY(-7px) scale(1.04); box-shadow:var(--shadow-hover); }
+.next-button:active,.again-button:active { transform:translateY(3px) scale(1.02,.94); }
+.hatch-art { position:absolute; right:22px; bottom:18px; width:112px; height:112px; pointer-events:none; }
+.hatch-art img { width:100%; height:100%; object-fit:contain; }
+
+.closed-card { width:min(690px,80vw); padding:26px 50px 32px; display:flex; flex-direction:column; align-items:center; gap:18px; background:var(--card); border:7px solid var(--gold); border-radius:38px; box-shadow:var(--shadow-lg); animation:payoff-in .5s var(--ease-out) backwards; }
+.closed-card .lantern-row { height:60px; }
+.closed-title { margin:0; font-size:clamp(34px,4vw,54px); cursor:pointer; }
+.closed-line { margin:0; color:var(--teal-d); font-size:clamp(22px,2.6vw,34px); cursor:pointer; }
+
+/* The full shelf is the celebration. This stays deliberately unlike the
+   round-close card: a small, bright note in the middle of the market. */
+.all-done-card {
+  position:relative;
+  width:min(720px,82vw);
+  padding:42px 58px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:24px;
+  text-align:center;
+  background:linear-gradient(145deg, var(--card), var(--cream));
+  border:7px solid var(--teal);
+  border-radius:52px 28px 52px 28px;
+  box-shadow:var(--shadow-lg), inset 0 0 0 10px rgba(242,178,51,.14);
+  animation:payoff-in .55s var(--ease-out) backwards;
+}
+.all-done-sparkle {
+  width:76px;
+  height:76px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:var(--gold);
+  color:var(--card);
+  box-shadow:0 0 0 10px rgba(242,178,51,.2), var(--shadow);
+  font-size:47px;
+  line-height:1;
+}
+.all-done-line {
+  margin:0;
+  max-width:580px;
+  color:var(--ink);
+  font-size:clamp(27px,3.6vw,49px);
+  font-weight:850;
+  line-height:1.16;
+  cursor:pointer;
+}
+
+#rotate-view { display:none; position:fixed; inset:0; z-index:50; place-items:center; background:var(--cream); }
+.rotate-icon { width:190px; height:190px; position:relative; animation:turn-device 1.8s ease-in-out infinite; }
+.rotate-icon::before { content:""; position:absolute; left:54px; top:18px; width:82px; height:145px; border:10px solid var(--teal-d); border-radius:22px; background:var(--card); box-shadow:var(--shadow-lg); }
+.rotate-icon::after { content:"↻"; position:absolute; right:-18px; top:48px; color:var(--gold-d); font-size:82px; font-weight:900; }
+.rotate-icon img { width:100%; height:100%; object-fit:contain; }
+
+@keyframes soft-breathe { 50% { transform:translateY(-7px); box-shadow:0 30px 72px rgba(90,60,20,.24), inset 0 -9px 0 rgba(90,60,20,.12); } }
+@keyframes walk-in { from { opacity:0; transform:translateX(70px); } }
+@keyframes tile-fly { 45% { transform:translateY(-42px) scale(1.08) rotate(-4deg); } to { transform:translateY(-65px) scale(.86); opacity:.15; } }
+@keyframes tile-land { 0% { transform:scale(.72); } 55% { transform:scale(1.14,.88); } 100% { transform:scale(1); } }
+@keyframes wobble { 25% { transform:rotate(-6deg); } 50% { transform:rotate(6deg); } 75% { transform:rotate(-4deg); } }
+@keyframes hint-breathe { 50% { transform:translateY(-10px) scale(1.06); } }
+@keyframes jar-glow { 50% { filter:drop-shadow(0 0 9px rgba(242,178,51,.62)); } }
+@keyframes payoff-in { from { opacity:0; transform:translateY(28px) scale(.97); } }
+@keyframes turn-device { 50% { transform:rotate(90deg); } }
+@keyframes ready-pulse { 50% { transform:translateY(-5px) scale(1.045); box-shadow:0 0 0 12px rgba(47,163,160,.14), var(--shadow-lg); } }
+@keyframes coach-pulse { 50% { border-color:var(--gold-d); transform:scale(1.018); } }
+@keyframes coach-bob { 50% { transform:translateY(11px); } }
+
+@media (orientation:portrait) {
+  #app { visibility:hidden; }
+  .audio-toggle { display:none; }
+  #rotate-view { display:grid; }
+}
+
+@media (max-height:650px) and (orientation:landscape) {
+  :root { --shelf-row:56px; --shelf-gap:9px; --shelf-pad:7px; }
+  .jar-shelf { grid-template-columns:repeat(8,64px); }
+  .jar-picture { width:38px; height:38px; }
+  .jar-css { width:32px; height:34px; }
+  .jar-label { font-size:11px; }
+  .play-area { padding-top:6px; }
+  .lantern-row { height:46px; }
+  .queue-heading { margin-bottom:8px; font-size:clamp(20px,2.3vw,28px); }
+  .people-row { height:calc(100% - 120px); }
+  .person-card { max-height:305px; }
+  .speech-bubble { min-height:70px; font-size:17px; }
+  .slots { min-height:64px; }
+  .slot { height:60px; }
+  .tiles { min-height:124px; padding:10px 14px; gap:12px; }
+  .letter-tile { width:64px; height:64px; font-size:33px; }
+  .tutorial-caption { padding:12px 22px; font-size:19px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after {
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+  }
+  .person-card:not(:disabled):hover,
+  .person-card:not(:disabled):active,
+  .person-card.is-chosen,
+  .person-card.is-deemphasised,
+  .letter-tile:not(.is-used):not(.is-flying):hover,
+  .letter-tile:not(.is-used):not(.is-flying):active,
+  .jar-button.is-full:hover,
+  .jar-button.is-full:active,
+  .handover-button:not(:disabled):hover,
+  .handover-button:not(:disabled):active,
+  .speaker-button:hover,
+  .speaker-button:active,
+  .help-button:hover,
+  .help-button:active,
+  .next-button:hover,.next-button:active,
+  .again-button:hover,.again-button:active,
+  .intro-continue:hover,.intro-continue:active,
+  .tutorial-skip:hover,.tutorial-skip:active,
+  .open-button:hover,.open-button:active,
+  .audio-toggle:hover,.audio-toggle:active { transform:none; }
+
+  /* Keep the flat states legible without motion. */
+  .person-card:not(:disabled):hover { box-shadow:var(--shadow-hover); }
+  .letter-tile:not(.is-used):not(.is-flying):hover { box-shadow:var(--shadow-lg), inset 0 -6px 0 var(--cream2); }
+  .person-card.is-helped { opacity:.25; }
+}
