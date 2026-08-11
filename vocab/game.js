@@ -93,7 +93,6 @@ function sfxCandidates(name) {
 }
 
 function startSfx(url) {
-  if (muted) return;
   const effect = new Audio(url);
   effect.preload = "auto";
   effect.volume = 1;
@@ -131,7 +130,6 @@ function probeSfx(name, candidates, index = 0) {
 }
 
 export function playSfx(name) {
-  if (muted) return;
   const ready = sfxState.get(name);
   if (typeof ready === "string") {
     startSfx(ready);
@@ -234,19 +232,6 @@ function setMuted(nextMuted) {
   muted = nextMuted;
   saveMuteSetting();
   updateMuteButton();
-  if (muted) {
-    currentLineToken += 1;
-    if ("speechSynthesis" in window) speechSynthesis.cancel();
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
-    }
-    setMusicDucked(false);
-    for (const effect of activeSfx) effect.pause();
-    activeSfx.clear();
-    sfxDucked = false;
-  }
-  if (currentAudio) currentAudio.volume = muted ? 0 : 1;
   fadeBgmTo(musicTarget());
 }
 
@@ -278,7 +263,7 @@ function updateMuteButton() {
   if (!button) return;
   // A picture, not a word. The child reads the speaker, not the label.
   button.textContent = muted ? "🔇" : "🔊";
-  button.setAttribute("aria-label", muted ? "Unmute audio" : "Mute audio");
+  button.setAttribute("aria-label", muted ? "Unmute music" : "Mute music");
   button.setAttribute("aria-pressed", String(muted));
 }
 
@@ -450,10 +435,6 @@ export function say(key, text, { onEnded } = {}) {
     currentAudio = null;
   }
   if ("speechSynthesis" in window) speechSynthesis.cancel();
-  if (muted) {
-    finishLine(lineToken, onEnded);
-    return;
-  }
   setMusicDucked(true);
   if (audioState.get(key) === false) {
     fallbackSpeech(key, text, lineToken, onEnded);
@@ -461,7 +442,7 @@ export function say(key, text, { onEnded } = {}) {
   }
   const voice = new Audio(audioUrl(key));
   voice.preload = "auto";
-  voice.volume = muted ? 0 : 1;
+  voice.volume = 1;
   currentAudio = voice;
   voice.addEventListener("canplay", () => audioState.set(key, true), { once:true });
   voice.addEventListener("ended", () => {
