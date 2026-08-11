@@ -227,6 +227,7 @@ function setMuted(nextMuted) {
 }
 
 function renderAudioControls() {
+  const controls = node("div", "top-controls");
   const button = node("button", "audio-toggle");
   button.type = "button";
   button.addEventListener("click", () => {
@@ -238,8 +239,14 @@ function renderAudioControls() {
     playSfx("tap");
     window.setTimeout(() => setMuted(true), 100);
   });
-  document.body.append(button);
+  const fullscreen = node("button", "fullscreen-toggle");
+  fullscreen.type = "button";
+  fullscreen.addEventListener("click", toggleFullscreen);
+  controls.append(button, fullscreen);
+  document.body.append(controls);
   updateMuteButton();
+  updateFullscreenButton();
+  document.addEventListener("fullscreenchange", updateFullscreenButton);
 }
 
 function updateMuteButton() {
@@ -249,6 +256,35 @@ function updateMuteButton() {
   button.textContent = muted ? "🔇" : "🔊";
   button.setAttribute("aria-label", muted ? "Unmute audio" : "Mute audio");
   button.setAttribute("aria-pressed", String(muted));
+}
+
+function fullscreenIcon(isFullscreen) {
+  const path = isFullscreen
+    ? "M9 4v5H4M15 9h5V4M20 15v5h-5M9 15H4v5"
+    : "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5";
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}" /></svg>`;
+}
+
+function updateFullscreenButton() {
+  const button = document.querySelector(".fullscreen-toggle");
+  if (!button) return;
+  const isFullscreen = Boolean(document.fullscreenElement);
+  button.innerHTML = fullscreenIcon(isFullscreen);
+  button.setAttribute("aria-label", isFullscreen ? "Exit fullscreen" : "Enter fullscreen");
+  button.setAttribute("title", isFullscreen ? "Exit fullscreen" : "Enter fullscreen");
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else if (document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    }
+  } catch {
+    // Fullscreen can be denied by browser or iframe policy; the game remains usable.
+  }
+  updateFullscreenButton();
 }
 
 function musicTarget() {
